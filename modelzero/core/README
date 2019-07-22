@@ -1,0 +1,41 @@
+
+One of the challenges is that by default a form will return a form field for every field in the model it refers to.  Even for "pure CRUD" methods this may be over restrictive.  For example in entities with following fields:
+
+    created_at
+    updated_at
+    __key__
+
+__key__ is create_only (ie can only be specified at creation if at all)
+created_at is readonly and is auto generated)
+
+We dont want ot show the created_at field on creates or updates (but ok for GET)
+
+What is a good model for turning on/off fields to be shown?  Note that Forms are view models essentially because when the data goes from say a JSON request, the engine already applies validations that were specified in the service method annotations.   
+
+This means our form would need awareness of the engine method in whose context this is being called.
+
+But an engine method is just a "view" into the system - whether it is a read or a write.
+
+So can we represent an Engine method as a view model or a form eg:
+
+class EngineViewModel(ViewModel):
+    Engine = ...
+    Method = ...
+    def __init__(self):
+        pass
+
+class SchoolCreateEngineViewModel(EngineViewModel):
+    Engine = SchoolEngine
+    Method = "create"
+
+this should result in the following model:
+
+
+SchoolCreateViewModel:
+    member : Member
+    viewer : Key<Member>
+    __suppressions__ = [
+        "member/__key__",
+        "member/created_at",
+        "member/updated_at"
+    ]

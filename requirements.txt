@@ -1,0 +1,16 @@
+# This requirements file lists all third-party dependencies for this project.
+#
+# Run 'pip install -r requirements.txt -t lib/' to install these dependencies
+# in `lib/` subdirectory.
+#
+# Note: The `lib` directory is added to `sys.path` by `appengine_config.py`.
+flask_restplus
+flask-wtf
+requests
+enums
+gspread
+google-api-python-client
+phonenumbers
+google-cloud-datastore
+google-auth
+google-api

@@ -1,0 +1,7 @@
+ipython
+ipdb
+unittest2
+pytest
+pytest_mock
+pytest-cov
+Flask

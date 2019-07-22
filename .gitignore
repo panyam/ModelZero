@@ -1,0 +1,16 @@
+*.pyc
+http_spec.py
+.coverage
+*.swo
+*.swp
+build/
+.cache
+# don't include third-party dependencies.
+!lib/README.md
+.gradle
+.DS_Store
+lib/*
+bower_components/*
+deps/
+.idea/
+dsemu
