@@ -16,8 +16,6 @@ TEST_HOST = "http://localhost:8080"
 TEST_PHONE = "+14084561234"
 TEST_EMAIL = "test1@modelzero.com"
 
-from modelzero.world import *
-
 def test_signup_with_phone():
     """ Test signup with an email with no other pre-registrations. """
     world = create_test_world()

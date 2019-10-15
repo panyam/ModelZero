@@ -1,7 +1,6 @@
 
 from ipdb import set_trace
 from modelzero import utils
-from modelzero.core import memstore
 from modelzero.members.entities import Member
 import random, time
 

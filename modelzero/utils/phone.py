@@ -1,6 +1,5 @@
 
 from modelzero.core import errors
-from modelzero import configs
 from modelzero.utils import getLogger
 
 import hashlib, binascii, random, datetime, os
@@ -25,6 +24,7 @@ def send_sms(number, body, force_in_dev = False):
         return
 
     import urllib, urllib2, base64
+    from modelzero import configs
     use_twilio = True
     if use_twilio:
         url = "https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json" % configs.Twilio["ACCOUNT_SID"]
