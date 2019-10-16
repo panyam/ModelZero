@@ -28,7 +28,7 @@ def test_engine_fetch(mocker):
     count,offset,viewer = 100, 10, None
     mocker.patch.object(engine.table, "fetch")
     engine.fetch(count, offset, viewer)
-    engine.table.fetch.assert_called_once_with(Query(engine.entity_class).set_limit(count).set_offset(offset))
+    engine.table.fetch.assert_called_once_with(Query(engine.model_class).set_limit(count).set_offset(offset))
 
 def test_soft_delete(mocker):
     engine = create_test_engine()

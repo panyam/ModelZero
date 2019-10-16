@@ -43,19 +43,3 @@ def create_app():
         app.logger.error('Unhandled Exception: %s', (e))
         return render_template('500.htm'), 500
     return app
-
-def register_blueprints(app, world):
-    # Register blueprints and endpoints
-    from modelzero.blueprints import api, pages, auth, views
-    app.register_blueprint(api.create_blueprint(world))
-    app.register_blueprint(views.create_blueprint(world))
-    for bp in pages.create_blueprints(world): app.register_blueprint(bp)
-    app.register_blueprint(auth.blueprint)
-    return app
-
-def run():
-    app = create_app()
-    datastore = world.create_default_datastore(gae_project_id = app.config['PROJECT_ID'])
-    theWorld = world.World(datastore)
-    register_blueprints(app, theWorld)
-    app.run(host='127.0.0.1', port=8080, debug=True)

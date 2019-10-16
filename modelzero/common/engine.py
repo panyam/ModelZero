@@ -13,7 +13,7 @@ class Engine(Generic[T, M], CoreEngine):
     @EngineMethod
     def get(self, obj_or_id : Union[T, Key], viewer : M = None, access_type : str = "view", nothrow = False):
         entity = obj_or_id
-        if type(obj_or_id) is not self.entity_class:
+        if type(obj_or_id) is not self.model_class:
             entity = self.table.get_by_key(obj_or_id, nothrow = nothrow)
         if viewer:
             self.ensure_access(entity, viewer, access_type)
@@ -22,7 +22,7 @@ class Engine(Generic[T, M], CoreEngine):
     @EngineMethod
     def fetch(self, count : int = 1000, offset : int = 0, viewer : M = None):
         """ Get all the members."""
-        query = Query(self.entity_class).set_limit(count).set_offset(offset)
+        query = Query(self.model_class).set_limit(count).set_offset(offset)
         return self.table.fetch(query)
 
     @EngineMethod
