@@ -10,7 +10,7 @@ from modelzero.common.engine import *
 from modelzero.common.entities import *
 
 def create_test_engine():
-    from modelzero.core import memstore
+    from modelzero.common import memstore
     datastore = memstore.MemStore()
     return Engine(datastore)
 
