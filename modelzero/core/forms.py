@@ -39,8 +39,8 @@ class ModelFormBase(FlaskForm):
             formfield = wtfields.FormField(form_class)
             return formfield
         elif issubclass(field.__class__, ListField):
-            child_field = cls.form_field_for(field.child_field)
-            formfield = wtfields.FieldList(child_field)
+            child_class = cls.form_field_for(field.child_class)
+            formfield = wtfields.FieldList(child_class)
             return formfield
         elif issubclass(field.__class__, KeyField):
             # - Need a better way to do this

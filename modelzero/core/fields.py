@@ -56,10 +56,16 @@ class StructField(Field):
         Field.__init__(self, **kwargs)
         self.model_class = model_class
 
-class ListField(Field):
-    def __init__(self, child_field, **kwargs):
+class MapField(Field):
+    def __init__(self, key_class, value_class, **kwargs):
         Field.__init__(self, **kwargs)
-        self.child_field = child_field
+        self.key_class = key_class
+        self.value_class = value_class
+
+class ListField(Field):
+    def __init__(self, child_class, **kwargs):
+        Field.__init__(self, **kwargs)
+        self.child_class = child_class
 
 class LeafField(Field):
     """ Leaf fields are simple fields that are stored as a single logical field. """
