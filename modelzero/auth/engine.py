@@ -3,7 +3,7 @@ from ipdb import set_trace
 from modelzero.core import errors
 from modelzero.core import engine
 from modelzero.core.engine import EngineMethod
-from modelzero.utils import get_param, phone, getLogger
+from modelzero.utils import phone, getLogger
 from modelzero.members.entities import Member
 from modelzero.auth.entities import Channel
 
@@ -40,12 +40,12 @@ class AuthEngine(engine.Engine):
             raise errors.Unauthorized("Invalid user.  Please register first.")
         return channel
 
-    def create_member_for_channel(self, channel, params):
+    def create_member_for_channel(self, channel, memberbody):
         """ Creates a member for a new login channel that does not yet have a member associated with it. """
         if channel.memberkey is not None:
             raise errors.ValidationError("Member is already registered for this login channel")
 
-        member = Member().apply_patch(params)
+        member = Member().apply_patch(memberbody)
         member = self.memberengine.table.put(member)
         channel.memberkey = member.getkey()
         if channel.memberkey is None:
@@ -74,7 +74,7 @@ class AuthEngine(engine.Engine):
         if channel:
             print("Session Token: ", channel.session_token)
             print("Cookies: ", cookies)
-        if channel and channel.session_token and channel.session_token.decode() == cookies.get("ne_session_token", ""):
+        if channel and channel.session_token and channel.session_token.decode() == cookies.get("mz_session_token", ""):
             return channel
 
         # Try out google signin last!
@@ -96,10 +96,10 @@ class Authenticator(object):
     def __init__(self, authengine):
         self.authengine = authengine
 
-    def start_action(self, action, params):
+    def start_action(self, action, **kwargs):
         pass
 
-    def complete_action(self, action, params):
+    def complete_action(self, action, **kwargs):
         pass
 
 class PhoneAuthenticator(Authenticator):
@@ -115,28 +115,25 @@ class PhoneAuthenticator(Authenticator):
         channel.verification_timeout = self.verification_timeout
         self.authengine.table.put(channel)
 
-        log.info("PIN Code: %s" % pin)
+        print("PIN Code: %s" % pin)
         phone.send_sms(channel.login_id, body_template % pin)
         if self.authengine.is_dev_mode:
             return pin
         return True
 
-    def start_action(self, action, params):
-        phone = get_param(params, "phone")
+    def start_action(self, action, phone):
         channel = self.authengine.get_channel("phone", phone, create = action == "registration", ensure_member = action == "login")
-        return self.start_phone_verification(channel, params)
+        return self.start_phone_verification(channel)
 
-    def complete_action(self, action, params):
-        phone = get_param(params, "phone")
+    def complete_action(self, action, phone, code, memberbody):
         assert phone is not None
         channel = self.authengine.get_channel("phone", phone, create = action == "registration", ensure_member = action == "login")
-        self.validate_phone_pin(channel, params, save = True)
+        self.validate_phone_pin(channel, code, save = True)
         if action == "registration":
-            self.authengine.create_member_for_channel(channel, params)
+            self.authengine.create_member_for_channel(channel, memberbody)
         return channel
 
-    def validate_phone_pin(self, channel, params, save = False):
-        code = get_param(params, "code")
+    def validate_phone_pin(self, channel, code, save = False):
         if channel.verification_timedout:
             raise errors.ValidationError("Verification timed out.  Please kick off phone login again")
         if code != channel.verification_string:
@@ -147,7 +144,7 @@ class PhoneAuthenticator(Authenticator):
             self.authengine.table.put(channel)
         return channel
 
-    def start_phone_verification(self, channel, params):
+    def start_phone_verification(self, channel):
         if False and channel.is_verified:
             raise errors.NotAllowed("Number already taken.")
         return self.send_phone_code(channel, "Use the PIN '%s' to verify phone number.")
@@ -163,22 +160,20 @@ class EmailAuthenticator(Authenticator):
         hash = binascii.hexlify(hashlib.sha256(splusp).digest())
         return hash
 
-    def complete_action(self, action, params):
-        email = get_param(params, "email")
+    def complete_action(self, action, email, password, memberbody):
         channel = self.authengine.get_channel("email", email, create = action == "registration", ensure_member = action == "login")
+        password = password.strip()
         if action == "login":
             salt = channel.credentials['salt']
             hash = channel.credentials['hash']
-            password = get_param(params, "password").strip()
             inputhash = self.calc_hash(salt, password)
             if hash != inputhash:
                 raise errors.ValidationError("Invalid username or password")
             channel.refresh_session_token()
             self.authengine.table.put(channel)
         else:
-            password = get_param(params, "password").strip()
             self.update_password(channel, password)
-            self.authengine.create_member_for_channel(channel, params)
+            self.authengine.create_member_for_channel(channel, memberbody)
         return channel
 
     def update_password(self, channel, password, save = False):
@@ -195,7 +190,7 @@ class EmailAuthenticator(Authenticator):
         return channel
 
 class GAEAuthEngine(AuthEngine):
-    def finish_gae_registration(self, request, params):
+    def finish_gae_registration(self, request):
         channel = self.get_channel_from_request(request)
         if not channel:
             raise errors.Unauthorized("Not logged in a valid GAE session")

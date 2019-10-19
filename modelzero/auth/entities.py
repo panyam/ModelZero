@@ -54,6 +54,11 @@ class Channel(Entity):
         return out
 
     @property
+    def cookies(self):
+        return ["channel=%s;path=/" % self.getkey().value,
+                "mz_session_token=%s;path=/" % self.session_token.decode()]
+
+    @property
     def verification_timedout(self):
         return (datetime.datetime.utcnow() - self.verification_sent_at).total_seconds() > self.verification_timeout
 

@@ -11,17 +11,17 @@ def create_namespace(world):
            viewer = lambda self, *a, **kw: self.request_member)
 
     # /<....> has a get method
-    r["<long:memberid>"].GET(world.Members.get,
+    r["<int:memberid>"].GET(world.Members.get,
         member = lambda self, *a, **kw: kw["memberid"],
         viewer = lambda self, *a, **kw: self.request_member)
 
     # we also have a PUT method here
-    r["<long:memberid>"].PUT(world.Members.update,
+    r["<int:memberid>"].PUT(world.Members.update,
         member = lambda self, *a, **kw: kw["memberid"],
         viewer = lambda self, *a, **kw: self.request_member)
 
     # And a delete method
-    r["<long:memberid>"].DELETE(world.Members.delete,
+    r["<int:memberid>"].DELETE(world.Members.delete,
         member = lambda self, *a, **kw: kw["memberid"],
         viewer = lambda self, *a, **kw: self.request_member)
 

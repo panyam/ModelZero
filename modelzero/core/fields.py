@@ -143,3 +143,4 @@ class DateTimeField(LeafField):
 class URIField(LeafField): pass
 class JsonField(LeafField): pass
 class FractionField(LeafField): pass
+class AnyField(LeafField): pass
