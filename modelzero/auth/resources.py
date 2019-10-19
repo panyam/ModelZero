@@ -25,16 +25,14 @@ def create_namespace(world):
     phone_auth = world.Auth.get_authenticator("phone")
     phone["<string:action>"].GET(phone_auth.start_action,
                                  action = kwarg_getter("action"),
-                                 phone = param_getter("phone")) \
+                                 phone = param_getter("phone"))     \
             .doc("phone", "The phone number to perform auth on")
     phone["<string:action>"].POST(phone_auth.complete_action,
                                   action = kwarg_getter("action"),
                                   phone = param_getter("phone"),
-                                  code = param_getter("phone"),
-                                  memberbody = body_getter)                             \
+                                  code = param_getter("phone"))                         \
             .doc("phone", "The phone number to perform auth on")                        \
             .doc("code", "The validation code sent to the phone number", "formData")    \
-            .expects("modelzero.members.entities.Member")                               \
             .on_success(set_channel_cookie)
 
     """

@@ -7,6 +7,8 @@ class World(object):
     def __init__(self, datastore):
         self.datastore = datastore
         self.Members = membersengine.Engine(datastore)
-        self.Auth = authengine.AuthEngine(datastore, self.Members)
-        self.Auth.add_authenticator("email", authengine.EmailAuthenticator(self.Auth))
-        self.Auth.add_authenticator("phone", authengine.PhoneAuthenticator(self.Auth))
+        self.AuthEngine = authengine.AuthEngine(datastore, self.Members)
+        self.EmailAuth = authengine.EmailAuthenticator(self.AuthEngine)
+        self.PhoneAuth = authengine.PhoneAuthenticator(self.AuthEngine)
+        self.AuthEngine.add_authenticator("email", self.EmailAuth)
+        self.AuthEngine.add_authenticator("phone", self.PhoneAuth)

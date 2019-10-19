@@ -40,12 +40,12 @@ class AuthEngine(engine.Engine):
             raise errors.Unauthorized("Invalid user.  Please register first.")
         return channel
 
-    def create_member_for_channel(self, channel, memberbody):
+    def create_member_for_channel(self, channel):
         """ Creates a member for a new login channel that does not yet have a member associated with it. """
         if channel.memberkey is not None:
             raise errors.ValidationError("Member is already registered for this login channel")
 
-        member = Member().apply_patch(memberbody)
+        member = Member()
         member = self.memberengine.table.put(member)
         channel.memberkey = member.getkey()
         if channel.memberkey is None:
@@ -125,12 +125,12 @@ class PhoneAuthenticator(Authenticator):
         channel = self.authengine.get_channel("phone", phone, create = action == "registration", ensure_member = action == "login")
         return self.start_phone_verification(channel)
 
-    def complete_action(self, action, phone, code, memberbody):
+    def complete_action(self, action, phone, code):
         assert phone is not None
         channel = self.authengine.get_channel("phone", phone, create = action == "registration", ensure_member = action == "login")
         self.validate_phone_pin(channel, code, save = True)
         if action == "registration":
-            self.authengine.create_member_for_channel(channel, memberbody)
+            self.authengine.create_member_for_channel(channel)
         return channel
 
     def validate_phone_pin(self, channel, code, save = False):
@@ -160,7 +160,7 @@ class EmailAuthenticator(Authenticator):
         hash = binascii.hexlify(hashlib.sha256(splusp).digest())
         return hash
 
-    def complete_action(self, action, email, password, memberbody):
+    def complete_action(self, action, email, password):
         channel = self.authengine.get_channel("email", email, create = action == "registration", ensure_member = action == "login")
         password = password.strip()
         if action == "login":
@@ -173,7 +173,7 @@ class EmailAuthenticator(Authenticator):
             self.authengine.table.put(channel)
         else:
             self.update_password(channel, password)
-            self.authengine.create_member_for_channel(channel, memberbody)
+            self.authengine.create_member_for_channel(channel)
         return channel
 
     def update_password(self, channel, password, save = False):
