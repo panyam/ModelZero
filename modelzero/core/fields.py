@@ -77,15 +77,19 @@ class KeyField(LeafField):
         self.resolved = type(entity_class) is not str
         self.entity_class = entity_class
 
-    def validate(self, value):
+    def resolve(self):
         if not self.resolved:
+            import importlib
             parts = self.entity_class.split(".")
-            first,rest,last = parts[0],parts[1:-1],parts[-1]
-            curr = head = __import__(first)
-            for part in rest:
-                curr = getattr(curr, part)
-            self.entity_class = getattr(curr, last)
+            first,last = parts[:-1],parts[-1]
+            module = ".".join(first)
+            module = importlib.import_module(module)
+            self.entity_class = getattr(module, last)
             self.resolved = type(self.entity_class) is not str
+        return self.resolved
+
+    def validate(self, value):
+        assert self.resolve_entity(), f"Could not resolve entity: {self.entity_class}"
         from modelzero.core.entities import Key
         if type(value) is not Key:
             value = self.entity_class.Key(value)

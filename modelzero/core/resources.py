@@ -50,7 +50,7 @@ class BaseResource(Resource):
         # Looks like a circular dependancy?
         # TODO: AuthEngine should not know about "request" objects 
         if self._request_channel is None:
-            self._request_channel = self.world.Auth.get_channel_from_request(request)
+            self._request_channel = self.world.AuthEngine.get_channel_from_request(request)
         return self._request_channel
 
     @property

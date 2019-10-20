@@ -4,7 +4,7 @@ def ensure_login(world):
     def ensure_login_func(f):
         def worker_func(*args, **kwargs):
             from flask import request, redirect, Response
-            channel = world.Auth.get_request_member(request, nothrow = True)
+            channel = world.AuthEngine.get_request_member(request, nothrow = True)
             if not channel:
                 login_url = "/auth/login/?to=%s" % request.url
                 return redirect(login_url, code = 302)

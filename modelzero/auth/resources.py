@@ -22,7 +22,7 @@ def create_namespace(world):
         return channel, 200, {'Set-Cookie': channel.cookies}
 
     phone = r["phone"]
-    phone_auth = world.Auth.get_authenticator("phone")
+    phone_auth = world.PhoneAuth
     phone["<string:action>"].GET(phone_auth.start_action,
                                  action = kwarg_getter("action"),
                                  phone = param_getter("phone"))     \
@@ -37,7 +37,7 @@ def create_namespace(world):
 
     """
     email = r["email"]
-    email_auth = world.Auth.get_authenticator("email")
+    email_auth = world.EmailAuth
     email["<string:action>"].GET(email_auth.start_action,
             action = (kwarg_getter("action"),)
             param_getter).add_param("email", "The email to perform auth on")
@@ -56,7 +56,7 @@ def create_namespaces(world):
     class PhoneAuth(BaseResource):
         @property
         def authenticator(self):
-            return world.Auth.get_authenticator("phone")
+            return world.PhoneAuth
 
         @ns.param("phone", "The phone number to perform auth on")
         def get(self, action):
@@ -75,7 +75,7 @@ def create_namespaces(world):
     class EmailAuth(BaseResource):
         @property
         def authenticator(self):
-            return world.Auth.get_authenticator("email")
+            return world.EmailAuth
 
         def post(self, action):
             channel = self.authenticator.complete_action(action, self.params)
