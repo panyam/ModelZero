@@ -27,6 +27,17 @@ class Generator(object):
         out.append(f"class {class_name} : AbstractEntity {{")
         for name, field in entity_class.__model_fields__.items():
             out.append(f"    var {name} : {self.swift_type_for_field(field)} = {self.default_value_for_field(field)}")
+
+        # Generate ID methods
+        kfs = entity_class.key_fields()
+        """
+        if not kfs:
+            out.append("    var id : ID?")
+        else:
+            kfs = [f"{{{kf}}}" for kf in kfs]
+            out.append("    var id : ID {")
+            out.append("    }")
+        """
         out.append("}")
         return "\n".join(out)
 
