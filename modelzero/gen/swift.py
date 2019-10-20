@@ -5,32 +5,49 @@ from modelzero.core.models import ModelBase
 from ipdb import set_trace
 
 class Generator(object):
+    """ Generates model bindings for entities to Swift.  """
     def __init__(self):
-        self.registry = {}
-        # Swift does not have packages
-        self.name_to_entity_mapping = {}
-        self.target_entity_info = {}
+        # Swift does not have packages so we need names to be unique
+        # and this uniqueness can come by not ensuring two classes globally 
+        # dont have the same name *or* letting user specify an alternative name
+        # for an entity
+        self.name_to_entities = {}
+        self.entity_infos = {}
 
     def name_for_entity_class(self, entity_class):
-        fqn = entity_class.__fqn__
-        name = entity_class.__name__
-        return name
+        return self.register_entity_class(entity_class)
+        efqn = entity_class.__fqn__
+        if efqn not in self.entity_infos:
+            raise KeyError(f"{entity_class}")
+        einfo = self.entity_infos.get(efqn)
+        return einfo['class_name']
 
-    def code_for_entity_class(self, entity_class):
-        result = self.class_for_entity_class(entity_class)
-        return result
+    def register_entity_class(self, entity_class, class_name = None):
+        efqn = entity_class.__fqn__
+        einfo = self.entity_infos.get(efqn, None)
+        class_name = class_name or entity_class.__name__
+        curr_eclass = self.name_to_entities.get(class_name, None)
+        if curr_eclass and self.name_to_entities[class_name].__fqn__ != efqn:
+            raise Exception(f"Class name '{class_name}' already maps to a different entity class: {curr_eclass}")
+        if einfo and einfo["class_name"] != class_name:
+            raise Exception(f"Entity class {entity_class} is already mapped to {class_name}")
+        if not curr_eclass:
+            self.name_to_entities[class_name] = entity_class
+        if not einfo:
+            einfo = self.entity_infos[efqn] = {'class_name': class_name, 'entity_class': entity_class}
+        return einfo['class_name']
 
-    def class_for_entity_class(self, entity_class):
+    def class_for_entity_class(self, entity_class, class_name = None):
+        class_name = self.register_entity_class(entity_class, class_name)
+        # See if class_name is taken by another entity
         out = []
-        proto_name = entity_class.__name__
-        class_name = f"{proto_name}"
         out.append(f"class {class_name} : AbstractEntity {{")
         for name, field in entity_class.__model_fields__.items():
             out.append(f"    var {name} : {self.swift_type_for_field(field)} = {self.default_value_for_field(field)}")
 
+        """
         # Generate ID methods
         kfs = entity_class.key_fields()
-        """
         if not kfs:
             out.append("    var id : ID?")
         else:
@@ -122,9 +139,3 @@ class Generator(object):
             return out
         assert False, ("Invalid field type: ", field)
 
-def generate_entity(entity_class, outstream = sys.stdout):
-    """ Generate an entity to a given output stream with swift bindings. """
-    outstream.write(f"struct {entity_class.__name__} : Hashable, Codable " + "{")
-    for name, field in entity_class.__model_fields__.items():
-        outstream.write(f"    var {name} : {swift_type_for_field(field)} \n")
-    outstream.write("}")
