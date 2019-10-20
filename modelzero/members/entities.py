@@ -1,6 +1,6 @@
 
 import datetime
-from modelzero.core.entities import Entity, StringField, BooleanField, IntegerField, DateTimeField, JsonField, RefField, URIField
+from modelzero.core.entities import Entity, StringField, BooleanField, IntegerField, DateTimeField, JsonField, RefField
 from modelzero.common.entities import *
 
 class Member(BaseEntity):

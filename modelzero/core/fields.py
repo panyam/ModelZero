@@ -1,10 +1,22 @@
 
+import importlib
 from ipdb import set_trace
 import datetime
 import typing
 from typing import TypeVar, Generic
 import datetime
 from . import errors
+
+def resolve_fqn(fqn):
+    resolved = type(fqn) is not str
+    if not resolved:
+        parts = fqn.split(".")
+        first,last = parts[:-1],parts[-1]
+        module = ".".join(first)
+        module = importlib.import_module(module)
+        result = getattr(module, last)
+        resolved = True
+    return resolved, result
 
 class Field(object):
     USE_DEFAULT = None
@@ -57,43 +69,40 @@ class StructField(Field):
         self.model_class = model_class
 
 class MapField(Field):
-    def __init__(self, key_class, value_class, **kwargs):
+    def __init__(self, key_type, value_type, **kwargs):
         Field.__init__(self, **kwargs)
-        self.key_class = key_class
-        self.value_class = value_class
+        self.key_type = key_type
+        self.value_type = value_type
+        self.key_resolved = type(key_type) is not str
+        self.value_resolved = type(value_type) is not str
+
+    def resolve(self):
+        if not self.key_resolved:
+            self.key_resolved, self.key_type = resolve_fqn(self.key_type)
+        if not self.value_resolved:
+            self.value_resolved, self.value_type = resolve_fqn(self.value_type)
+        return self.key_resolved and self.value_resolved
 
 class ListField(Field):
-    def __init__(self, child_class, **kwargs):
+    def __init__(self, child_type, **kwargs):
         Field.__init__(self, **kwargs)
-        self.child_class = child_class
-
-class LeafField(Field):
-    """ Leaf fields are simple fields that are stored as a single logical field. """
-    pass
-
-class KeyField(LeafField):
-    def __init__(self, entity_class, **kwargs):
-        Field.__init__(self, **kwargs)
-        self.resolved = type(entity_class) is not str
-        self.entity_class = entity_class
+        self.resolved = type(child_type) is not str
+        self.child_type = child_type
 
     def resolve(self):
         if not self.resolved:
-            import importlib
-            parts = self.entity_class.split(".")
-            first,last = parts[:-1],parts[-1]
-            module = ".".join(first)
-            module = importlib.import_module(module)
-            self.entity_class = getattr(module, last)
-            self.resolved = type(self.entity_class) is not str
+            self.resolved, self.child_type = resolve_fqn(self.child_type)
         return self.resolved
 
+class LeafField(Field):
+    """ Leaf fields are simple fields that are stored as a single logical field. """
+    def __init__(self, base_type = None, **kwargs):
+        Field.__init__(self, **kwargs)
+        self.base_type = base_type
+
     def validate(self, value):
-        assert self.resolve_entity(), f"Could not resolve entity: {self.entity_class}"
-        from modelzero.core.entities import Key
-        if type(value) is not Key:
-            value = self.entity_class.Key(value)
-        assert value.entity_class == self.entity_class, "Entity classes of key field ({}) and key value ({}) do not match".format(self.entity_class, value.entity_class)
+        if self.base_type:
+            value = self.base_type(value)
         return super().validate(value)
 
 class RefField(LeafField):
@@ -102,36 +111,33 @@ class RefField(LeafField):
         self.model_class = model_class
 
 class BytesField(LeafField):
-    def validate(self, value):
-        value = bytes(value)
-        return super().validate(value)
+    def __init__(self, **kwargs):
+        LeafField.__init__(self, bytes, **kwargs)
 
 class StringField(LeafField):
-    def validate(self, value):
-        value = str(value)
-        return super().validate(value)
+    def __init__(self, **kwargs):
+        LeafField.__init__(self, str, **kwargs)
 
 class IntegerField(LeafField):
-    def validate(self, value):
-        value = int(value)
-        return super().validate(value)
+    def __init__(self, **kwargs):
+        LeafField.__init__(self, int, **kwargs)
 
 class LongField(LeafField):
-    def validate(self, value):
-        value = int(value)
-        return super().validate(value)
+    def __init__(self, **kwargs):
+        LeafField.__init__(self, int, **kwargs)
 
 class BooleanField(LeafField):
-    def validate(self, value):
-        value = int(value)
-        return super().validate(value)
+    def __init__(self, **kwargs):
+        LeafField.__init__(self, bool, **kwargs)
 
 class FloatField(LeafField):
-    def validate(self, value):
-        value = float(value)
-        return super().validate(value)
+    def __init__(self, **kwargs):
+        LeafField.__init__(self, float, **kwargs)
 
 class DateTimeField(LeafField):
+    def __init__(self, **kwargs):
+        LeafField.__init__(self, datetime.datetime, **kwargs)
+
     def validate(self, value):
         if type(value) is str:
             try:
@@ -144,7 +150,26 @@ class DateTimeField(LeafField):
             value = value.replace(tzinfo = None)
         return super().validate(value)
 
-class URIField(LeafField): pass
+class URLField(LeafField): pass
 class JsonField(LeafField): pass
 class FractionField(LeafField): pass
 class AnyField(LeafField): pass
+
+class KeyField(LeafField):
+    def __init__(self, entity_class, **kwargs):
+        Field.__init__(self, **kwargs)
+        self.resolved = type(entity_class) is not str
+        self.entity_class = entity_class
+
+    def resolve(self):
+        if not self.resolved:
+            self.resolved, self.entity_class = resolve_fqn(self.entity_class)
+        return self.resolved
+
+    def validate(self, value):
+        assert self.resolve_entity(), f"Could not resolve entity: {self.entity_class}"
+        from modelzero.core.entities import Key
+        if type(value) is not Key:
+            value = self.entity_class.Key(value)
+        assert value.entity_class == self.entity_class, "Entity classes of key field ({}) and key value ({}) do not match".format(self.entity_class, value.entity_class)
+        return super().validate(value)

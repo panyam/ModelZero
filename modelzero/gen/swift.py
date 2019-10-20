@@ -1,9 +1,10 @@
 
 import sys
 from modelzero.core import fields
+from modelzero.core.models import ModelBase
 from ipdb import set_trace
 
-class SwiftGenerator(object):
+class Generator(object):
     def __init__(self):
         self.registry = {}
         # Swift does not have packages
@@ -16,24 +17,14 @@ class SwiftGenerator(object):
         return name
 
     def code_for_entity_class(self, entity_class):
-        return "\n\n".join([self.protocol_for_entity_class(entity_class), self.class_for_entity_class(entity_class)])
-
-    def protocol_for_entity_class(self, entity_class):
-        out = []
-        # Todo check that duplicate entities are named properly
-        # so that the lack of namespaces wont allow collissions
-        # to happen
-        out.append(f"protocol {entity_class.__name__} : Entity {{")
-        for name, field in entity_class.__model_fields__.items():
-            out.append(f"    var {name} : {self.swift_type_for_field(field)} {{ get set }}")
-        out.append("}")
-        return "\n".join(out)
+        result = self.class_for_entity_class(entity_class)
+        return result
 
     def class_for_entity_class(self, entity_class):
         out = []
         proto_name = entity_class.__name__
-        class_name = f"Default{proto_name}"
-        out.append(f"class {class_name} : AbstractEntity, {proto_name} {{")
+        class_name = f"{proto_name}"
+        out.append(f"class {class_name} : AbstractEntity {{")
         for name, field in entity_class.__model_fields__.items():
             out.append(f"    var {name} : {self.swift_type_for_field(field)} = {self.default_value_for_field(field)}")
         out.append("}")
@@ -59,9 +50,14 @@ class SwiftGenerator(object):
         elif isinstance(field, fields.DateTimeField):
             return "Date(timeIntervalSince1970: 0)"
         elif isinstance(field, fields.KeyField):
-            field.resolve()
             return "nil"
-        assert False, "Invalid field found"
+        elif isinstance(field, fields.URLField):
+            return "http://"
+        elif isinstance(field, fields.ListField):
+            return "[]"
+        elif isinstance(field, fields.MapField):
+            return "nil"
+        assert False, f"Invalid field found: {field}"
 
     def swift_type_for_field(self, field):
         if isinstance(field, fields.BooleanField):
@@ -80,11 +76,39 @@ class SwiftGenerator(object):
             return "Data?"
         elif isinstance(field, fields.StringField):
             return "String"
+        elif isinstance(field, fields.URLField):
+            return "URL"
         elif isinstance(field, fields.DateTimeField):
             return "Date"
         elif isinstance(field, fields.KeyField):
             field.resolve()
             return f"Ref<{self.name_for_entity_class(field.entity_class)}>?"
+            # return "Ref?"
+        elif isinstance(field, fields.ListField):
+            field.resolve()
+            if isinstance(field.child_type, fields.Field):
+                return f"[{self.swift_type_for_field(field.child_type)}]"
+            else:
+                assert issubclass(field.child_type, ModelBase)
+                return f"[{self.name_for_entity_class(field.child_type)}]"
+        elif isinstance(field, fields.MapField):
+            field.resolve()
+            out = "["
+
+            if isinstance(field.key_type, fields.Field):
+                out += f"{self.swift_type_for_field(field.key_type)}"
+            else:
+                assert issubclass(field.key_type, ModelBase)
+                out += f"{self.name_for_entity_class(field.key_type)}"
+            out += " : "
+
+            if isinstance(field.value_type, fields.Field):
+                out += f"{self.swift_type_for_field(field.value_type)}"
+            else:
+                assert issubclass(field.value_type, ModelBase)
+                out += f"{self.name_for_entity_class(field.value_type)}"
+            out += " ]?"
+            return out
         assert False, ("Invalid field type: ", field)
 
 def generate_entity(entity_class, outstream = sys.stdout):
