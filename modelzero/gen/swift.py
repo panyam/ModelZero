@@ -37,27 +37,6 @@ class Generator(object):
             einfo = self.entity_infos[efqn] = {'class_name': class_name, 'entity_class': entity_class}
         return einfo['class_name']
 
-    def class_for_entity_class(self, entity_class, class_name = None):
-        class_name = self.register_entity_class(entity_class, class_name)
-        # See if class_name is taken by another entity
-        out = []
-        out.append(f"class {class_name} : AbstractEntity {{")
-        for name, field in entity_class.__model_fields__.items():
-            out.append(f"    var {name} : {self.swift_type_for_field(field)} = {self.default_value_for_field(field)}")
-
-        """
-        # Generate ID methods
-        kfs = entity_class.key_fields()
-        if not kfs:
-            out.append("    var id : ID?")
-        else:
-            kfs = [f"{{{kf}}}" for kf in kfs]
-            out.append("    var id : ID {")
-            out.append("    }")
-        """
-        out.append("}")
-        return "\n".join(out)
-
     def default_value_for_field(self, field):
         if isinstance(field, fields.BooleanField):
             return "false"
@@ -139,3 +118,44 @@ class Generator(object):
             return out
         assert False, ("Invalid field type: ", field)
 
+    def class_for_entity_class(self, entity_class, class_name = None):
+        class_name = self.register_entity_class(entity_class, class_name)
+        # See if class_name is taken by another entity
+        out = []
+        out.append(f"class {class_name} : AbstractEntity {{")
+        for name, field in entity_class.__model_fields__.items():
+            out.append(f"    var {name} : {self.swift_type_for_field(field)} = {self.default_value_for_field(field)}")
+
+        """
+        # Generate ID methods
+        kfs = entity_class.key_fields()
+        if not kfs:
+            out.append("    var id : ID?")
+        else:
+            kfs = [f"{{{kf}}}" for kf in kfs]
+            out.append("    var id : ID {")
+            out.append("    }")
+        """
+        out.append("}")
+        return "\n".join(out)
+
+    def class_for_service_client(self, entity_class, class_name = None):
+        class_name = self.register_entity_class(entity_class, class_name)
+        # See if class_name is taken by another entity
+        out = []
+        out.append(f"class {class_name} : AbstractEntity {{")
+        for name, field in entity_class.__model_fields__.items():
+            out.append(f"    var {name} : {self.swift_type_for_field(field)} = {self.default_value_for_field(field)}")
+
+        """
+        # Generate ID methods
+        kfs = entity_class.key_fields()
+        if not kfs:
+            out.append("    var id : ID?")
+        else:
+            kfs = [f"{{{kf}}}" for kf in kfs]
+            out.append("    var id : ID {")
+            out.append("    }")
+        """
+        out.append("}")
+        return "\n".join(out)

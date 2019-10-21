@@ -30,7 +30,7 @@ def create_namespace(world):
     phone["<string:action>"].POST(phone_auth.complete_action,
                                   action = kwarg_getter("action"),
                                   phone = param_getter("phone"),
-                                  code = param_getter("phone"))                         \
+                                  code = param_getter("code"))                         \
             .doc("phone", "The phone number to perform auth on")                        \
             .doc("code", "The validation code sent to the phone number", "formData")    \
             .on_success(set_channel_cookie)

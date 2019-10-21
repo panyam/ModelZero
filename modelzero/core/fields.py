@@ -102,7 +102,8 @@ class LeafField(Field):
 
     def validate(self, value):
         if self.base_type:
-            value = self.base_type(value)
+            if not isinstance(value, self.base_type):
+                value = self.base_type(value)
         return super().validate(value)
 
 class RefField(LeafField):
@@ -157,7 +158,7 @@ class AnyField(LeafField): pass
 
 class KeyField(LeafField):
     def __init__(self, entity_class, **kwargs):
-        Field.__init__(self, **kwargs)
+        LeafField.__init__(self, **kwargs)
         self.resolved = type(entity_class) is not str
         self.entity_class = entity_class
 
@@ -167,7 +168,7 @@ class KeyField(LeafField):
         return self.resolved
 
     def validate(self, value):
-        assert self.resolve_entity(), f"Could not resolve entity: {self.entity_class}"
+        assert self.resolve(), f"Could not resolve entity: {self.entity_class}"
         from modelzero.core.entities import Key
         if type(value) is not Key:
             value = self.entity_class.Key(value)

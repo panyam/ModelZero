@@ -60,6 +60,7 @@ class Channel(Entity):
 
     @property
     def verification_timedout(self):
+        if self.verification_sent_at is None: return True
         return (datetime.datetime.utcnow() - self.verification_sent_at).total_seconds() > self.verification_timeout
 
     @property
