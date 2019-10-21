@@ -14,7 +14,7 @@ def create_test_world():
     app.config['RESTPLUS_JSON'] = { "cls": neutils.NEJsonEncoder }
 
     from modelzero import world
-    datastore = world.create_default_datastore(gae_app_id = "modelzero1")
+    datastore = world.create_default_datastore(gae_app_id = "jukebox-7")
     theWorld = world.World(datastore)
     return theWorld
 

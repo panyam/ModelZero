@@ -33,7 +33,7 @@ class GAETable(Table[T]):
     def dsclient(self): return self._dsclient
 
     def fromDatastore(self, entity) -> T:
-        if not entity:
+        if entity is None:
             return None
         builtin_list = list
         if isinstance(entity, builtin_list):
