@@ -1,18 +1,32 @@
 
 from ipdb import set_trace
 from modelzero.core.resources import BaseResource
+from modelzero.utils import get_param 
 
 class RouterMethod(object):
-    def __init__(self, method, *args, **kwargs):
-        self.method = method
-        self.args = args
-        self.kwargs = kwargs
+    def __init__(self, name):
         self.success_method = None
         self.error_method = None
         self.done_method = None
         self.param_docs = {}
         self.expected_type = None
         self.returned_type = None
+        self._method = None
+        """
+        self.name = name
+        self.handler = handler
+        self.params(*args, **kwargs)
+        """
+
+    def method(self, method):
+        self._method = method
+        return self
+
+    def params(self, *args, **kwargs):
+        """ Specification on the kind of parameters that can be accepted by this method.  These params should map to the params accepted by the handler/operation method. """
+        self.args = args
+        self.kwargs = kwargs
+        return self
 
     def expects(self, model_class):
         self.expected_class = model_class
@@ -42,7 +56,7 @@ class RouterMethod(object):
         argvals = [arg(target, *target_args, **target_kwargs) for arg in self.args]
         kwargvals = {k:v(target, *target_args, **target_kwargs) for (k,v) in self.kwargs.items()}
         try:
-            result = self.method(*argvals, **kwargvals)
+            result = self._method(*argvals, **kwargvals)
             if self.success_method:
                 result = self.success_method(result, target, *target_args, **target_kwargs)
         except Exception as e:
@@ -74,20 +88,20 @@ class Router(object):
         self.children.append((key, newroute))
         return newroute
 
-    def POST(self, method, *args, **kwargs):
-        return self.add_method("POST", method, *args, **kwargs)
+    def POST(self, name):
+        return self.add_method("POST", name)
 
-    def PUT(self, method, *args, **kwargs):
-        return self.add_method("PUT", method, *args, **kwargs)
+    def PUT(self, name):
+        return self.add_method("PUT", name)
 
-    def DELETE(self, method, *args, **kwargs):
-        return self.add_method("DELETE", method, *args, **kwargs)
+    def DELETE(self, name):
+        return self.add_method("DELETE", name)
 
-    def GET(self, method, *args, **kwargs):
-        return self.add_method("GET", method, *args, **kwargs)
+    def GET(self, name):
+        return self.add_method("GET", name)
 
-    def add_method(self, http_method, method, *args, **kwargs):
-        rm = RouterMethod(method, *args, **kwargs)
+    def add_method(self, http_method, name):
+        rm = RouterMethod(name)
         self.methods[http_method.upper()] = rm
         return rm
 
@@ -118,3 +132,14 @@ def to_flask_ns(router, ns, world, prefix = ""):
         else:
             next = prefix + "/" + child_prefix
         to_flask_ns(child, ns, world, next)
+
+def PathArg(key):
+    return lambda self, *a, **kw: kw[key]
+def QueryParam(param):
+    return lambda self, *a, **kw: get_param(self.params, param)
+def RequestMember(self, *a, **kw):
+    return self.request_member
+def Body(self, *a, **kw):
+    return self.params
+def BodyFieldPath(fp):
+    return lambda self, *a, **kw: "test"

@@ -4,7 +4,6 @@ from modelzero.auth import engine as authengine
 import os
 
 def create_default_datastore(**kwargs):
-    # import ipdb ; ipdb.set_trace()
     fds = os.environ.get("FLASK_DATA_STORE", "mem")
     if fds == "mem":
         from modelzero.common import memstore
