@@ -137,25 +137,29 @@ class Generator(object):
             out.append("    }")
         """
         out.append("}")
-        return "\n".join(out)
+        return out
 
-    def class_for_service_client(self, entity_class, class_name = None):
-        class_name = self.register_entity_class(entity_class, class_name)
+    def class_for_service_client(self, router, class_name):
         # See if class_name is taken by another entity
+        from collections import deque
         out = []
-        out.append(f"class {class_name} : AbstractEntity {{")
-        for name, field in entity_class.__model_fields__.items():
-            out.append(f"    var {name} : {self.swift_type_for_field(field)} = {self.default_value_for_field(field)}")
+        out.append(f"class {class_name} {{")
 
-        """
-        # Generate ID methods
-        kfs = entity_class.key_fields()
-        if not kfs:
-            out.append("    var id : ID?")
-        else:
-            kfs = [f"{{{kf}}}" for kf in kfs]
-            out.append("    var id : ID {")
-            out.append("    }")
-        """
+        queue = deque([router])
+        while queue:
+            next = queue.pop()
+            # Add children
+            for name,child in next.children:
+                queue.appendleft(child)
+
+            for name,method in next.methods.items():
+                out.extend(self.func_for_router_method(method))
         out.append("}")
-        return "\n".join(out)
+        return out
+
+    def func_for_router_method(self, method):
+        out = []
+        # create the method here
+        out.append(f"    func {method.name}() -> AsyncResultState<[Album]> {{")
+        out.append(f"    }}")
+        return out

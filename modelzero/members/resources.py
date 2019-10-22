@@ -1,31 +1,33 @@
 
 from flask_restplus import namespace
-from modelzero.utils import getLogger, router
+from modelzero.utils import getLogger
+from modelzero.apigen.apispec import API, Router, QueryParam, PathArg, Body, FieldPath, RequestMember
 
 log = getLogger(__name__)
 
-def create_namespace(world):
-    r = router.Router()
-    r.POST(world.Members.create, 
-           member = lambda self, *a, **kw: self.params,
-           viewer = lambda self, *a, **kw: self.request_member)
+def create_default_routemap(world):
+    return {
+        "CreateMember": world.Members.create,
+        "GetMemberDetails": world.Members.get,
+        "UpdateMemberDetails": world.Members.update,
+        "DeleteMember": world.Members.delete,
+    }
+
+def create_api():
+    r = Router()
+    r.POST("CreateMember")                      \
+        .params(member = FieldPath(), viewer = RequestMember)
 
     # /<....> has a get method
-    r["<int:memberid>"].GET(world.Members.get,
-        member = lambda self, *a, **kw: kw["memberid"],
-        viewer = lambda self, *a, **kw: self.request_member)
+    r["<int:memberid>"].GET("GetMemberDetails")     \
+            .params(member = PathArg("memberid"), viewer = RequestMember)
 
     # we also have a PUT method here
-    r["<int:memberid>"].PUT(world.Members.update,
-        member = lambda self, *a, **kw: kw["memberid"],
-        viewer = lambda self, *a, **kw: self.request_member)
+    r["<int:memberid>"].PUT("UpdateMemberDetails")      \
+            .params(member = PathArg("memberid"), viewer = RequestMember)
 
-    # And a delete method
-    r["<int:memberid>"].DELETE(world.Members.delete,
-        member = lambda self, *a, **kw: kw["memberid"],
-        viewer = lambda self, *a, **kw: self.request_member)
-
-    ns = namespace.Namespace('members', description='Members API')
-    router.to_flask_ns(r, ns, world)
-    return ns
+    # And a delete member
+    r["<int:memberid>"].DELETE("DeleteMember")      \
+            .params(member = PathArg("memberid"), viewer = RequestMember)
+    return API("members", router = r, description = "Members API")
 
