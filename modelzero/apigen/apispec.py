@@ -36,33 +36,34 @@ class Router(object):
         self.children.append((key, newroute))
         return newroute
 
-    def POST(self, name):
-        return self.add_method("POST", name)
+    def POST(self, name, *args, **kwargs):
+        return self.add_method("POST", name, *args, **kwargs)
 
-    def PUT(self, name):
-        return self.add_method("PUT", name)
+    def PUT(self, name, *args, **kwargs):
+        return self.add_method("PUT", name, *args, **kwargs)
 
-    def DELETE(self, name):
-        return self.add_method("DELETE", name)
+    def DELETE(self, name, *args, **kwargs):
+        return self.add_method("DELETE", name, *args, **kwargs)
 
-    def GET(self, name):
-        return self.add_method("GET", name)
+    def GET(self, name, *args, **kwargs):
+        return self.add_method("GET", name, *args, **kwargs)
 
-    def add_method(self, http_method, name):
-        rm = Method(name)
+    def add_method(self, http_method, name, *args, **kwargs):
+        rm = Method(name, *args, **kwargs)
         self.methods[http_method.upper()] = rm
         return rm
 
 class Method(object):
-    def __init__(self, name, method = None):
+    def __init__(self, name, *args, **kwargs):
         self.name = name
-        self._method = method
+        self._method = None
         self.success_method = None
         self.error_method = None
         self.done_method = None
         self.param_docs = {}
         self.expected_type = None
         self.returned_type = None
+        self.params(*args, **kwargs)
 
     def method(self, method):
         self._method = method
