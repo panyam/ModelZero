@@ -1,7 +1,8 @@
 
 import datetime
-from modelzero.core.entities import Entity, StringField, BooleanField, IntegerField, DateTimeField, JsonField, RefField
+from modelzero.core.entities import Entity
 from modelzero.common.entities import *
+from modelzero.core.custom_fields import *
 
 class Member(BaseEntity):
     fullname = StringField(required = True)

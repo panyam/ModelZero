@@ -4,7 +4,7 @@ import datetime
 import typing
 from typing import TypeVar, Generic, List
 import datetime
-from modelzero.core.fields import *
+from modelzero.core.fields import Field
 from modelzero.utils import with_metaclass
 
 class ModelBase(object):

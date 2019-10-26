@@ -1,5 +1,5 @@
 
-from ipdb import set_trace
+import importlib
 import logging
 import os, datetime
 from modelzero.core import errors
@@ -106,3 +106,14 @@ def get_param(source, param_name, validator=None, required=True, default=None, s
             target, attr = setto
             setattr(target, attr, value)
     return value
+
+def resolve_fqn(fqn):
+    resolved = type(fqn) is not str
+    if not resolved:
+        parts = fqn.split(".")
+        first,last = parts[:-1],parts[-1]
+        module = ".".join(first)
+        module = importlib.import_module(module)
+        result = getattr(module, last)
+        resolved = True
+    return resolved, result

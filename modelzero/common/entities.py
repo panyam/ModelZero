@@ -1,5 +1,6 @@
 
 from modelzero.core.entities import *
+from modelzero.core.custom_fields import *
 
 class BaseEntity(Entity):
     is_active = BooleanField(default=True)
