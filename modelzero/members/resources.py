@@ -5,29 +5,17 @@ from modelzero.apigen.apispec import API, Router, QueryParam, PathArg, Body, Fie
 
 log = getLogger(__name__)
 
-def create_default_routemap(world):
-    return {
-        "CreateMember": world.Members.create,
-        "GetMemberDetails": world.Members.get,
-        "UpdateMemberDetails": world.Members.update,
-        "DeleteMember": world.Members.delete,
-    }
-
-def create_api():
+def create_api(world):
     r = Router()
-    r.POST("CreateMember")                      \
-        .params(member = FieldPath(), viewer = RequestMember)
+    r.POST(world.Members.create, member = FieldPath(), viewer = RequestMember)
 
     # /<....> has a get method
-    r["<int:memberid>"].GET("GetMemberDetails")     \
-            .params(member = PathArg("memberid"), viewer = RequestMember)
+    r["<int:memberid>"].GET(world.Members.get, member = PathArg("memberid"), viewer = RequestMember)
 
     # we also have a PUT method here
-    r["<int:memberid>"].PUT("UpdateMemberDetails")      \
-            .params(member = PathArg("memberid"), viewer = RequestMember)
+    r["<int:memberid>"].PUT(world.Members.update, member = PathArg("memberid"), viewer = RequestMember)
 
     # And a delete member
-    r["<int:memberid>"].DELETE("DeleteMember")      \
-            .params(member = PathArg("memberid"), viewer = RequestMember)
+    r["<int:memberid>"].DELETE(world.Members.delete, member = PathArg("memberid"), viewer = RequestMember)
     return API("members", router = r, description = "Members API")
 

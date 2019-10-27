@@ -17,6 +17,19 @@ class MethodValidator(object):
     def __call__(self, input, *args, **kwargs):
         return input
 
+def ensure_access(target_member, accessor, permission : str):
+    """
+    Return true if *accessor* can access the target_member for a particular permission.
+    If not a NotAllowed exception is raised.
+    """
+    if not permission: 
+        return True
+    if accessor is None:
+        raise errors.NotAllowed("Accessor not found")
+    if target_member != accessor:
+        raise errors.NotAllowed("Access not allowed for permission '%s'" % permission)
+    return True
+
 class EngineBase(object):
     ModelClass = Entity
     def __init__(self, datastore, dev_mode = None):
@@ -41,6 +54,7 @@ class EngineMethod(object):
             # DO nothing because we are wrapping ourselves!
             return 
         import inspect
+        self.__name__ = target_method.__name__
         self.signature = inspect.signature(target_method)
         self.method_params = list(self.signature.parameters.keys())
         self.target_method = target_method
@@ -50,8 +64,13 @@ class EngineMethod(object):
     def __get__(self, instance, klass):
         if instance is None:
             # Class method was requested
+            set_trace()
             return self.make_unbound(klass)
         return self.make_bound(instance)
+
+    def __call__(self, *args, **kwargs):
+        """ Called when decorating a plain method. """
+        set_trace()
 
     def make_unbound(self, klass):
         @wraps(self.target_method)

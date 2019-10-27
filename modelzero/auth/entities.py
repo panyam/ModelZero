@@ -1,6 +1,7 @@
 
 import datetime
 from modelzero.core.entities import *
+from modelzero.core.custom_fields import *
 
 class Channel(Entity):
     # The type of login - "phone", "username", "email", "google", "twitter", "facebook" etc

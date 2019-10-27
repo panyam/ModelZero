@@ -54,9 +54,13 @@ class Router(object):
         return rm
 
 class Method(object):
-    def __init__(self, name, *args, **kwargs):
-        self.name = name
-        self._method = None
+    def __init__(self, method_or_fqn, *args, **kwargs):
+        if type(method_or_fqn) is str:
+            self._name = method_or_fqn
+            self._method = resolve_fqn(method_or_fqn)
+        else:
+            self._method = method_or_fqn
+            self._name = method_or_fqn.__name__
         self.success_method = None
         self.error_method = None
         self.done_method = None
@@ -65,9 +69,13 @@ class Method(object):
         self.returned_type = None
         self.params(*args, **kwargs)
 
-    def method(self, method):
-        self._method = method
-        return self
+    @property
+    def method(self):
+        return self._method
+
+    @property
+    def name(self):
+        return self._name
 
     def params(self, *args, **kwargs):
         """ Specification on the kind of parameters that can be accepted by this method.  These params should map to the params accepted by the handler/operation method. """

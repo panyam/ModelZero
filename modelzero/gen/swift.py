@@ -74,7 +74,7 @@ class Generator(object):
         if logical_type == list or list in (logical_type.mro()):
             return "[]"
         if logical_type == dict or dict in logical_type.mro():
-            return "{}"
+            return "[:]"
         try:
             if issubclass(logical_type, ModelBase):
                 # TODO - Create a "default" value?
@@ -151,7 +151,7 @@ class Generator(object):
         out.append("}")
         return out
 
-    def class_for_service_client(self, router, class_name):
+    def swiftclient_for(self, router, class_name):
         # See if class_name is taken by another entity
         from collections import deque
         out = []
@@ -171,9 +171,48 @@ class Generator(object):
 
     def func_for_router_method(self, method):
         out = []
+        import inspect
+        from inspect import signature
+        target_method = method.method
+        sig = signature(target_method)
+        for name,param in sig.parameters.items():
+            if name != "self":
+                set_trace()
         # create the method here
         # def param_sig(param): return "let {name}, {swift_type_for_field(kJ
         out.append(f"""func {method.name}() -> AsyncResultState<[<generate return type]> {{
         """)
         out.append(f"    }}")
         return out
+
+
+"""
+How do we descrbe routers and apis and clients?
+
+We ahve a few ways:
+    1. Specify an "interface spec" that describes the service is along with function name, 
+       param names and types, return type (and name if lang supports it).  From this we can generate 
+       the service stub that needs to be "implemented" by the service owner.  This is similar to
+       our "engine" methods.
+    2. Start with the engine methods.  Inspect its type signature, doc strings etc and infer
+        the "interface spec", each time the engine method changes, the spec automatically 
+        gets updated (via our generator).
+
+In both cases we have pros and cons.
+
+In the first case - having a single interface DSL, is pretty much what protobufs, thrift, restli gives us.
+There is no reason we couldnt use these instead of coming up with a new DSL (sure it is still a python spec
+but this is pretty much a DSL as we are describing a service and letting code gen setup the service stubs etc).
+
+The second case is pretty interesting.   Our docgen tools, inspection tools already give us info about what is
+returned, accepted params etc are.  If we are ok with programming our services in python (leave perf alone for now) 
+then why have a different DSL describing our service intent when the implementation can be it?
+
+The other thing here is if we went with a DSL approach then we are locking down to the "limitations" of a DSL
+whether it is expressing types or service details etc.  However with a "start" with language approach
+we have the flexibility of adapting the generator as we see fit.
+
+The only caveat is if we cannot "inspect" from the function.  But if this was the case we could always embed a DSL 
+in the doc strings which still localizes the intent close to where we want to implement.
+"""
+

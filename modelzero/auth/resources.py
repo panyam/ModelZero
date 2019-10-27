@@ -7,23 +7,21 @@ log = logging.getLogger(__name__)
 
 def create_default_routemap(world):
     return {
-        "StartPhoneRegistration": world.PhoneAuth.start_action,
-        "CompletePhoneRegistration": world.PhoneAuth.complete_action,
         "StartEmailRegistration": world.EmailAuth.start_action,
         "CompleteEmailRegistration": world.EmailAuth.complete_action,
     }
 
-def create_api():
+def create_api(world):
     r = Router()
     def set_channel_cookie(channel, res, *res_args, **res_kwargs):
         return channel, 200, {'Set-Cookie': channel.cookies}
 
     phone = r["phone"]
-    phone["<string:action>"].GET("StartPhoneRegistration")  \
+    phone["<string:action>"].GET(world.PhoneAuth.start_action)  \
             .params(action = PathArg("action"),
                     phone = QueryParam("phone"))            \
             .doc("phone", "The phone number to perform auth on")
-    phone["<string:action>"].POST("CompletePhoneRegistration")      \
+    phone["<string:action>"].POST(world.PhoneAuth.complete_action)      \
             .params(action = PathArg("action"),
                     phone = QueryParam("phone"),
                     code = QueryParam("code"))                      \
