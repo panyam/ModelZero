@@ -1,21 +1,29 @@
 
 from ipdb import set_trace
 from collections import defaultdict
-from typing import Generic, TypeVar
-from modelzero.utils import get_param, ensure_date, with_metaclass
-from modelzero.core.store import Query
-from modelzero.core.entities import Entity
 from functools import wraps
 from . import errors
 
 import logging
 log = logging.getLogger(__name__)
 
-T = TypeVar("T")
+def ValidateParam(param_name, predicate, *args, **kwargs):
+    def decorator(func):
+        is_first = not hasattr(func, "__param_validator__")
+        if is_first:
+            func.__param_validator__ = ParamValidator(func)
+        pv = func.__param_validator__
+        pv.add_validator(param_name, predicate, *args, **kwargs)
 
-class MethodValidator(object):
-    def __call__(self, input, *args, **kwargs):
-        return input
+        if not is_first:
+            return func
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            set_trace()
+            return pv(*args, **kwargs)
+        return wrapper
+    return decorator
 
 class ParamValidator(object):
     def __new__(cls, *args, **kwargs):
@@ -35,11 +43,6 @@ class ParamValidator(object):
         self.method_params = list(self.signature.parameters.keys())
         self.target_method = target_method
         self.validators = []
-
-        @wraps(target_method)
-        def wrapper(*args, **kwargs):
-            return self(*args, **kwargs)
-        self.decorator = wrapper
 
     def add_validator(self, param_name, predicate, *args, **kwargs):
         self.validators.append((param_name, predicate, args, kwargs))
@@ -89,17 +92,3 @@ class ParamValidator(object):
         if param is None:
             raise errors.ValidationError(f"Validator applied to no existent parameter: '{param_name}', in method ({self.target_method})")
         return param
-
-def ValidateParam(param_name, predicate, *args, **kwargs):
-    def decorator(func):
-        is_first = not hasattr(func, "__param_validator__")
-        if is_first:
-            func.__param_validator__ = ParamValidator(func)
-        pv = func.__param_validator__
-        pv.add_validator(param_name, predicate, *args, **kwargs)
-
-        if not is_first:
-            return func
-        else:
-            return pv.decorator
-    return decorator

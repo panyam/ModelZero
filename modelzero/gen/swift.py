@@ -116,9 +116,13 @@ class Generator(object):
         if fields.KeyType in (logical_type.mro()):
             thetype = self.resolve_generic_arg(logical_type.__args__[0])
             return f"Ref<{self.name_for_entity_class(thetype)}>?"
+        if logical_type == list:
+            return "[Any]"
         if list in (logical_type.mro()):
             thetype = self.resolve_generic_arg(logical_type.__args__[0])
             return f"[{self.swifttype_for(thetype)}]"
+        if logical_type == dict:
+            return "[String : Any]"
         if dict in logical_type.mro():
             key_type = self.resolve_generic_arg(logical_type.__args__[0])
             val_type = self.resolve_generic_arg(logical_type.__args__[1])
@@ -175,13 +179,24 @@ class Generator(object):
         from inspect import signature
         target_method = method.method
         sig = signature(target_method)
+
+        func_sig_line = f"    func {method.name}("
+        i = 0
         for name,param in sig.parameters.items():
-            if name != "self":
-                set_trace()
-        # create the method here
-        # def param_sig(param): return "let {name}, {swift_type_for_field(kJ
-        out.append(f"""func {method.name}() -> AsyncResultState<[<generate return type]> {{
-        """)
+            if name != "self" and param:
+                ptype = param.annotation
+                if ptype != inspect._empty:
+                    if i > 0:
+                        func_sig_line += ", "
+                    func_sig_line += f"{name}: {self.swifttype_for(ptype)}"
+                    i += 1
+        func_sig_line += ")"
+
+        rettype = sig.return_annotation
+        if rettype and rettype != inspect._empty:
+            func_sig_line += f" -> AsyncResultState<{self.swifttype_for(rettype)}>"
+        func_sig_line += " {"
+        out.append(func_sig_line)
         out.append(f"    }}")
         return out
 

@@ -8,7 +8,9 @@ K = TypeVar("K", str, Entity)
 
 class URL(str): pass
 
-class KeyType(Generic[K]): pass   
+class KeyType(Generic[K]):
+    def __call__(self, *args, **kwargs):
+        set_trace()
 
 class KeyField(LeafField):
     def __init__(self, entity_class, **kwargs):
