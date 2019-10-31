@@ -14,15 +14,24 @@ class {{class_name}} : AbstractEntity {
 {%- for name, field in entity_class.__model_fields__.items() %}
     var {{name}} : {{ gen.swifttype_for(field.logical_type) }} = {{ gen.default_value_for(field.logical_type) }}
 {%- endfor %}
+    enum CodingKeys : String, CodingKey {
+    {%- for name, field in entity_class.__model_fields__.items() %}
+        case {{name}}
+    {%- endfor %}
+    }
 }
 """)
 
 api_method_template = Template("""
-func {{ method.name }}(
-{%- for name, param in method.kwargs.items() -%}
+func {{ method.name }}({%- for name, param in method.kwargs.items() -%}
     {%- if loop.index0 > 0 %}, {% endif %}
     {{ name }}: {{gen.swifttype_for(method.param_annotations[name].annotation)}}
-{%- endfor %}) {% if method.return_annotation %} -> AsyncResultState<{{ gen.swifttype_for(method.return_annotation) }}> {% endif %} {
+{%- endfor %}) -> 
+    {%- if method.return_annotation -%}
+        AsyncResultState<{{ gen.swifttype_for(method.return_annotation) }}>
+    {%- else -%}
+        AsyncResultState<Int>
+    {%- endif -%} {
     var comps = makeUrlComponents()
     comps.queryItems = [
     {%- for name, param in method.query_params.items() %}
@@ -34,7 +43,8 @@ func {{ method.name }}(
     var request = URLRequest(url: url)
     request.httpMethod = "{{ http_method }}"
     {% with name,param = method.body_param %} {% if name %}
-    request.body = toJson({{ name }})
+    let encoder = JSONEncoder()
+    request.httpBody = try encoder.encode({{name}})
     {% endif %}{% endwith %}
     return fetchRequest(request: request)
 }
