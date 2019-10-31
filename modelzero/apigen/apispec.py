@@ -1,4 +1,6 @@
 
+import inspect
+from inspect import signature
 from ipdb import set_trace
 from modelzero.core.resources import BaseResource
 from modelzero.utils import get_param 
@@ -61,6 +63,7 @@ class Method(object):
         else:
             self._method = method_or_fqn
             self._name = method_or_fqn.__name__
+        self.method_sig = signature(self._method)
         self.success_method = None
         self.error_method = None
         self.done_method = None
@@ -68,10 +71,59 @@ class Method(object):
         self.expected_type = None
         self.returned_type = None
         self.params(*args, **kwargs)
+        self._return_annotation = None
+        self._param_annotations = None
+
+    @property
+    def query_params(self):
+        return {k: v for k,v in self.kwargs.items() if isinstance(v, QueryParam)}
+
+    @property
+    def patharg_params(self):
+        return {k: v for k,v in self.kwargs.items() if isinstance(v, PathArg)}
+
+    @property
+    def body_param(self):
+        for k,v in self.kwargs.items():
+            if v == Body:
+                return k,v
+        return None, None
+
+    @property
+    def return_annotation(self):
+        if not self._return_annotation:
+            self._return_annotation = self.method_sig.return_annotation
+        if self._return_annotation is inspect._empty:
+            return None
+        return self._return_annotation
+
+    @property
+    def param_annotations(self):
+        if not self._param_annotations:
+            self._param_annotations = {}
+            for name,param in self.method_sig.parameters.items():
+                # Ensure all required fields are covered in the API call
+                if param.default is inspect._empty:
+                    if name not in self.kwargs:
+                        raise Exception(f"Method param '{name}' not provided in router method: {self.fqn}")
+                self._param_annotations[name] = param
+
+            for name,param in self.kwargs.items():
+                # Ensure name is actually accepted by the param
+                if name not in self._param_annotations:
+                    raise Exception(f"Parameter '{name}' not accepted by method '{self.fqn}'")
+                ptype = self._param_annotations[name].annotation
+                if ptype is inspect._empty:
+                    raise Exception("Parameter '{name}' in '{self.fqn}' does not have a type annotation")
+        return self._param_annotations
 
     @property
     def method(self):
         return self._method
+
+    @property
+    def fqn(self):
+        return f"{self.method.__module__}.{self.name}"
 
     @property
     def name(self):
@@ -81,6 +133,7 @@ class Method(object):
         """ Specification on the kind of parameters that can be accepted by this method.  These params should map to the params accepted by the handler/operation method. """
         self.args = args
         self.kwargs = kwargs
+        self._param_annotations = None
         return self
 
     def expects(self, model_class):
@@ -89,6 +142,7 @@ class Method(object):
 
     def returns(self, retclass):
         self.returned_class = retclass
+        self._return_annotation = None
         return self
 
     def doc(self, name, doc = "", source = "query"):
@@ -157,13 +211,29 @@ def router_to_flask_ns(router, ns, world, prefix = ""):
             next = prefix + "/" + child_prefix
         router_to_flask_ns(child, ns, world, next)
 
-def PathArg(key):
-    return lambda self, *a, **kw: kw[key]
-def QueryParam(param):
-    return lambda self, *a, **kw: get_param(self.params, param)
+class PathArg(object):
+    def __init__(self, key):
+        self.key = key
+
+    def __call__(self, req, *args, **kwargs):
+        return kwargs[key]
+
+class FieldPath(object):
+    def __init__(self, fp = None):
+        self.field_path = fp
+
+    def __call__(self, req, *args, **kwargs):
+        return req.params
+
+class QueryParam(object):
+    def __init__(self, param):
+        self.param = param
+
+    def __call__(self, req, *args, **kwargs):
+        return get_param(req.params, self.param)
+
 def RequestMember(self, *a, **kw):
     return self.request_member
-def FieldPath(fp = None):
-    return lambda self, *a, **kw: self.params
+
 def Body(self, *a, **kw):
     return self.params

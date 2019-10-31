@@ -17,11 +17,11 @@ def create_api(world):
         return channel, 200, {'Set-Cookie': channel.cookies}
 
     phone = r["phone"]
-    phone["<string:action>"].GET(world.PhoneAuth.start_action)  \
+    phone["{action}"].GET(world.PhoneAuth.start_action)  \
             .params(action = PathArg("action"),
                     phone = QueryParam("phone"))            \
             .doc("phone", "The phone number to perform auth on")
-    phone["<string:action>"].POST(world.PhoneAuth.complete_action)      \
+    phone["{action}"].POST(world.PhoneAuth.complete_action)      \
             .params(action = PathArg("action"),
                     phone = QueryParam("phone"),
                     code = QueryParam("code"))                      \

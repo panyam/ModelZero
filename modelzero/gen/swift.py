@@ -1,11 +1,44 @@
 
-import datetime, typing
+from jinja2 import Template
+import datetime, typing, inspect
 import sys
 from modelzero.core import custom_fields as fields
 from modelzero.core.models import ModelBase
 from modelzero.core.entities import Entity
 from modelzero.utils import resolve_fqn
+import modelzero.apigen.apispec
 from ipdb import set_trace
+
+entity_class_template = Template("""
+class {{class_name}} : AbstractEntity {
+{%- for name, field in entity_class.__model_fields__.items() %}
+    var {{name}} : {{ gen.swifttype_for(field.logical_type) }} = {{ gen.default_value_for(field.logical_type) }}
+{%- endfor %}
+}
+""")
+
+api_method_template = Template("""
+func {{ method.name }}(
+{%- for name, param in method.kwargs.items() -%}
+    {%- if loop.index0 > 0 %}, {% endif %}
+    {{ name }}: {{gen.swifttype_for(method.param_annotations[name].annotation)}}
+{%- endfor %}) {% if method.return_annotation %} -> AsyncResultState<{{ gen.swifttype_for(method.return_annotation) }}> {% endif %} {
+    var comps = makeUrlComponents()
+    comps.queryItems = [
+    {%- for name, param in method.query_params.items() %}
+        URLQueryItem(name: "{{ name }}", value: {{ name }}),
+    {%- endfor %}
+    ]
+    comps.path = "{{ path_prefix }}"
+    let url : URL = comps.url!
+    var request = URLRequest(url: url)
+    request.httpMethod = "{{ http_method }}"
+    {% with name,param = method.body_param %} {% if name %}
+    request.body = toJson({{ name }})
+    {% endif %}{% endwith %}
+    return fetchRequest(request: request)
+}
+""")
 
 class Generator(object):
     """ Generates model bindings for entities to Swift.  """
@@ -51,7 +84,7 @@ class Generator(object):
             raise(f"{entity_class} is not a class")
         return entity_class
 
-    def default_value_for_type(self, logical_type):
+    def default_value_for(self, logical_type):
         assert not isinstance(logical_type, fields.Field), "Do not pass instances of Field"
         if logical_type == bool:
             return "false"
@@ -137,97 +170,30 @@ class Generator(object):
     def class_for_entity_class(self, entity_class, class_name = None):
         class_name = self.register_entity_class(entity_class, class_name)
         # See if class_name is taken by another entity
-        out = []
-        out.append(f"class {class_name} : AbstractEntity {{")
-        for name, field in entity_class.__model_fields__.items():
-            out.append(f"    var {name} : {self.swifttype_for(field.logical_type)} = {self.default_value_for_type(field.logical_type)}")
-
-        """
-        # Generate ID methods
-        kfs = entity_class.key_fields()
-        if not kfs:
-            out.append("    var id : ID?")
-        else:
-            kfs = [f"{{{kf}}}" for kf in kfs]
-            out.append("    var id : ID {")
-            out.append("    }")
-        """
-        out.append("}")
-        return out
+        return entity_class_template.render(gen = self,
+                    entity_class = entity_class,
+                    class_name = class_name)
 
     def swiftclient_for(self, router, class_name):
+        """ Generate the client with method per call in the API router. """
         # See if class_name is taken by another entity
         from collections import deque
-        out = []
-        out.append(f"class {class_name} {{")
+        out = [f"class {class_name} : ApiBase {{"]
+        def visit(r, path = ""):
+            for httpmethod,method in r.methods.items():
+                out.append(self.func_for_router_method(httpmethod, method, path))
 
-        queue = deque([router])
-        while queue:
-            next = queue.pop()
-            # Add children
-            for name,child in next.children:
-                queue.appendleft(child)
-
-            for name,method in next.methods.items():
-                out.extend(self.func_for_router_method(method))
+            for prefix,child in r.children:
+                visit(child, path + prefix)
+        visit(router, "/")
         out.append("}")
-        return out
+        return "\n".join(out)
 
-    def func_for_router_method(self, method):
-        out = []
-        import inspect
-        from inspect import signature
-        target_method = method.method
-        sig = signature(target_method)
-
-        func_sig_line = f"    func {method.name}("
-        i = 0
-        for name,param in sig.parameters.items():
-            if name != "self" and param:
-                ptype = param.annotation
-                if ptype != inspect._empty:
-                    if i > 0:
-                        func_sig_line += ", "
-                    func_sig_line += f"{name}: {self.swifttype_for(ptype)}"
-                    i += 1
-        func_sig_line += ")"
-
-        rettype = sig.return_annotation
-        if rettype and rettype != inspect._empty:
-            func_sig_line += f" -> AsyncResultState<{self.swifttype_for(rettype)}>"
-        func_sig_line += " {"
-        out.append(func_sig_line)
-        out.append(f"    }}")
-        return out
-
-
-"""
-How do we descrbe routers and apis and clients?
-
-We ahve a few ways:
-    1. Specify an "interface spec" that describes the service is along with function name, 
-       param names and types, return type (and name if lang supports it).  From this we can generate 
-       the service stub that needs to be "implemented" by the service owner.  This is similar to
-       our "engine" methods.
-    2. Start with the engine methods.  Inspect its type signature, doc strings etc and infer
-        the "interface spec", each time the engine method changes, the spec automatically 
-        gets updated (via our generator).
-
-In both cases we have pros and cons.
-
-In the first case - having a single interface DSL, is pretty much what protobufs, thrift, restli gives us.
-There is no reason we couldnt use these instead of coming up with a new DSL (sure it is still a python spec
-but this is pretty much a DSL as we are describing a service and letting code gen setup the service stubs etc).
-
-The second case is pretty interesting.   Our docgen tools, inspection tools already give us info about what is
-returned, accepted params etc are.  If we are ok with programming our services in python (leave perf alone for now) 
-then why have a different DSL describing our service intent when the implementation can be it?
-
-The other thing here is if we went with a DSL approach then we are locking down to the "limitations" of a DSL
-whether it is expressing types or service details etc.  However with a "start" with language approach
-we have the flexibility of adapting the generator as we see fit.
-
-The only caveat is if we cannot "inspect" from the function.  But if this was the case we could always embed a DSL 
-in the doc strings which still localizes the intent close to where we want to implement.
-"""
-
+    def func_for_router_method(self, http_method, method, prefix):
+        path_prefix = prefix
+        for name, param in method.patharg_params.items():
+            path_prefix = path_prefix.replace(f"{{{name}}}", f"\\({name})")
+        return api_method_template.render(method = method,
+                                          http_method = http_method,
+                                          path_prefix = path_prefix,
+                                          gen = self)
