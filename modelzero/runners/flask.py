@@ -5,12 +5,11 @@ from modelzero import world
 from modelzero import utils as neutils
 from modelzero.core import errors as neerrors
 
-def create_app():
+def create_app(project_id):
     from flask import Flask, render_template, redirect, jsonify
     app = Flask(__name__)
-    app.url_map.converters['long'] = neutils.LongConverter
     app.config['SECRET_KEY'] = os.urandom(32)
-    app.config['PROJECT_ID'] = "modelzero1"
+    app.config['PROJECT_ID'] = project_id
     app.config['RESTPLUS_JSON'] = { "cls": neutils.NEJsonEncoder }
 
     # Global error handlers

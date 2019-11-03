@@ -20,7 +20,6 @@ def ValidateParam(param_name, predicate, *args, **kwargs):
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            set_trace()
             return pv(*args, **kwargs)
         return wrapper
     return decorator
