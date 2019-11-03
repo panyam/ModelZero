@@ -3,8 +3,39 @@ from ipdb import set_trace
 from modelzero.core.fields import *
 from modelzero.core.entities import Entity
 from modelzero.utils import resolve_fqn
+from typing import TypeVar, Generic, List, Dict
 
 K = TypeVar("K", str, Entity)
+
+class ListField(Field):
+    def __init__(self, child_type, **kwargs):
+        Field.__init__(self, **kwargs)
+        self.child_type = child_type
+        self._logical_type = List[child_type]
+
+    @property
+    def logical_type(self):
+        return self._logical_type
+
+class MapField(Field):
+    def __init__(self, key_type, value_type, **kwargs):
+        Field.__init__(self, **kwargs)
+        self.key_type = key_type
+        self.value_type = value_type
+        self._logical_type = Dict[key_type, value_type]
+
+    @property
+    def logical_type(self):
+        return self._logical_type
+
+class NativeField(Field):
+    def __init__(self, wrapped_type, **kwargs):
+        Field.__init__(self, **kwargs)
+        self._logical_type = wrapped_type
+
+    @property
+    def logical_type(self):
+        return self._logical_type
 
 class URL(str): pass
 
@@ -32,32 +63,6 @@ class KeyField(LeafField):
             value = self.entity_class.Key(value)
         assert value.entity_class == self.entity_class, "Entity classes of key field ({}) and key value ({}) do not match".format(self.entity_class, value.entity_class)
         return super().validate(value)
-
-class ListField(Field):
-    def __init__(self, child_type, **kwargs):
-        Field.__init__(self, **kwargs)
-        self.child_type = child_type
-        self._logical_type = typing.List[child_type]
-
-    @property
-    def logical_type(self):
-        return self._logical_type
-
-class StructField(Field):
-    def __init__(self, model_class, **kwargs):
-        Field.__init__(self, **kwargs)
-        self.model_class = model_class
-
-class MapField(Field):
-    def __init__(self, key_type, value_type, **kwargs):
-        Field.__init__(self, **kwargs)
-        self.key_type = key_type
-        self.value_type = value_type
-        self._logical_type = typing.Dict[key_type, value_type]
-
-    @property
-    def logical_type(self):
-        return self._logical_type
 
 class RefField(LeafField):
     def __init__(self, model_class, **kwargs):
@@ -109,4 +114,4 @@ class DateTimeField(LeafField):
         return super().validate(value)
 
 class JsonField(LeafField): pass
-class FractionField(LeafField): pass
+

@@ -155,7 +155,7 @@ class EngineMeta(type):
     def __new__(cls, name, bases, dct):
         x = super().__new__(cls, name, bases, dct)
         model_class = getattr(x, "ModelClass", None)
-        if not model_class and name != "Service":
+        if not model_class:
             raise Exception("Service class MUST have an ModelClass class attribute to indicate resource classes being serviced.")
 
         x.__service_methods__ = getattr(x, "__service_methods__", {}).copy()

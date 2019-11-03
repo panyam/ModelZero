@@ -2,7 +2,8 @@
 from ipdb import set_trace
 import datetime
 import typing
-from typing import TypeVar, Generic, List
+from taggedunion import Union, Variant
+from typing import TypeVar, Generic, List, Tuple
 import datetime
 from modelzero.core.fields import Field
 from modelzero.utils import with_metaclass
@@ -13,6 +14,16 @@ class ModelBase(object):
         self.__field_values__ = {}
         self._validators = []
         self.apply_patch(kwargs, reject_invalid_fields = True)
+
+    @classmethod
+    def register_field(cls, fieldname : str, field : Field):
+        field.field_name = fieldname
+
+        # What do we do if the field is already present 
+        # (ie via a base class or via a duplicate declaration)?
+        cls.__model_fields__[fieldname] = field
+        # if not field.checker_name: field.checker_name = "has_" + fieldname
+        # setattr(cls, field.checker_name, field.makechecker(fieldname))
 
     def __repr__(self):
         return "<%s.%s at %x>" % (self.__class__.__module__, self.__class__.__name__, id(self))
@@ -59,36 +70,52 @@ class ModelBase(object):
         return self
 
 class ModelMeta(type):
-    __model_registry__ = {}
     def __new__(cls, name, bases, dct):
         x = super().__new__(cls, name, bases, dct)
-        x.__model_registry__ = ModelMeta.__model_registry__
 
+        # Evaluate FQN
+        x.__fqn__ = dct.get("__fqn__", ".".join([x.__module__, name]))
+
+        # Register all fields
         __model_fields__ = getattr(x, "__model_fields__", {}).copy()
         setattr(x, "__model_fields__", __model_fields__)
-        newfields = {}
-        for fieldname,field in x.__dict__.items():
-            if not issubclass(field.__class__, Field): continue
-
-            # What do we do if the field is already present 
-            # (ie via a base class or via a duplicate declaration)?
-            field.field_name = fieldname
-            __model_fields__[fieldname] = field
-            if not field.checker_name:
-                field.checker_name = "has_" + fieldname
-            newfields[field.checker_name] = field.makechecker(fieldname)
-            # newfields[fieldname] = field.makeproperty(fieldname)
-
-        # Set the new methods/fields that we have
-        for k,v in newfields.items(): setattr(x,k,v)
-
-        fqn = ".".join([x.__module__, name]) # getattr(x, "__fqn__", fqn)
-        if False and fqn in ModelMeta.__model_registry__:
-            raise Exception("Duplicate definition of model: " + fqn + 
-                            ".  Please use a different name or provide a __fqn__ attr")
-        ModelMeta.__model_registry__[fqn] = x
-        x.__fqn__ = fqn
+        for fieldname,entry in x.__dict__.copy().items():
+            if issubclass(entry.__class__, Field):
+                x.register_field(fieldname, entry)
         return x
 
 class Model(with_metaclass(ModelMeta, ModelBase)):
     pass
+
+class PatchModelBase(Model):
+    """ Patch objects represent the "patch actions" that can be performed on the fields of a Model. """
+    pass
+
+class PatchModelMeta(ModelMeta):
+    def __new__(cls, name, bases, dct):
+        x = super().__new__(cls, name, bases, dct)
+        model_class = getattr(x, "ModelClass", None)
+        if False and not model_class and (len(bases) != 1 or bases[0] != PatchModelBase):
+            set_trace()
+            raise Exception("PatchModel class MUST have an ModelClass class attribute to indicate resource classes being patched.")
+        return x
+
+class PatchModel(with_metaclass(PatchModelMeta, PatchModelBase)):
+    pass
+
+class Patch(typing.Generic[typing.TypeVar("M", bound = ModelBase)]): pass
+
+PatchType = TypeVar("PatchType")
+EntryType = TypeVar("EntryType")
+
+class PatchCommand(Union, typing.Generic[PatchType]):
+    SET = Variant(PatchType)
+    DELETE = Variant(None)  # No associated type
+
+class ListPatchCommand(Union, Generic[EntryType, PatchType]):
+    SET = Variant(List[EntryType])
+    DELETE = Variant(None)
+    REPLACE = Variant(Tuple[int, PatchType])
+    INSERT = Variant(Tuple[int, PatchType])
+    REMOVE = Variant(List[int])
+    SWAP = Variant(Tuple[int, int])
