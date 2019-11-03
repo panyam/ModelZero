@@ -153,6 +153,9 @@ class Table(Generic[T]):
         """ Delete an entry given its Key. """
         assert False, "Not implemented"
 
+    def query(self) -> Query[T]:
+        return Query(self._entity_class)
+
     def fetch(self, query : Query[T]) -> List[T]:
         """ Queries the table for entries that match a certain conditions and then sorting (if required) and returns results in a particular window. """
         return []

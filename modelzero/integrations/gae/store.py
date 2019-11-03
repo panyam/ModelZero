@@ -12,7 +12,11 @@ log = logging.getLogger(__name__)
 T = TypeVar("T")
 
 class GAEStore(DataStore):
-    def __init__(self, gae_app_id):
+    def __init__(self, gae_app_id, gae_host = None):
+        if gae_host:
+            from google.cloud.environment_vars import GCD_HOST
+            import os
+            os.environ[GCD_HOST] = gae_host
         self._dsclient = datastore.Client(gae_app_id)
         self._tables = {}
 
@@ -26,8 +30,8 @@ class GAETable(Table[T]):
     responsible for ensuring loading an persistance of Entities.
     """
     def __init__(self, dsclient, entity_class : Type[T] = T):
-        self._dsclient = dsclient
         self._entity_class = entity_class
+        self._dsclient = dsclient
 
     @property
     def dsclient(self): return self._dsclient
@@ -107,7 +111,9 @@ class GAETable(Table[T]):
         efields = self._entity_class.__model_fields__
         for f in query.filters:
             assert f.fieldname in efields, "Clause refers to field (%s) not in entity class (%s)" % (f.fieldname, self._entity_class)
-            dsquery.add_filter(f.fieldname, GAETable.OPS[f.operator], f.value)
+            dsquery.add_filter(f.fieldname,
+                               GAETable.OPS[f.operator],
+                               f.value)
         if query.field_ordering:
             dsquery.order = [field if asc else "-"+ field for field,asc in query.field_ordering]
         results = dsquery.fetch(limit = query.limit, offset = query.offset)
