@@ -167,7 +167,7 @@ class Generator(GeneratorBase):
         if fields.KeyType in (logical_type.mro()):
             return "nil"
         if logical_type == fields.URL:
-            return "http://"
+            return 'URL(string: "http://")'
         if logical_type == datetime.datetime:
             return "Date(timeIntervalSince1970: 0)"
         if logical_type == list or list in (logical_type.mro()):
@@ -203,7 +203,7 @@ class Generator(GeneratorBase):
         if logical_type == fields.JsonField:
             return "Any?"
         if logical_type == fields.URL:
-            return "URL"
+            return "URL?"
         if self.is_key_type(logical_type):
             thetype = self.resolve_generic_arg(logical_type.__args__[0])
             return f"Ref<{self.name_for_model_class(thetype)}>?"
