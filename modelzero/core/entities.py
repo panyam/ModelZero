@@ -1,6 +1,8 @@
 
 from modelzero.core.models import *
 
+KEY_FIELD = "__key__"
+
 # TODO _ Should this be a Model instance?
 # Advantage of this would be we have more typing and a stronger relationship 
 # between the entity fields this Key is referring to.
@@ -75,7 +77,7 @@ class Key(object):
 
 class Entity(Model):
     def __init__(self, **kwargs):
-        self.__key__ = None
+        setattr(self, KEY_FIELD, None)
         super(Entity, self).__init__(**kwargs)
 
     @classmethod
@@ -90,7 +92,7 @@ class Entity(Model):
 
     def is_key_field(self, k : str) -> bool:
         """ Returns True if a given field name 'k' is a key field. """
-        if k == "__key__": return True
+        if k == KEY_FIELD: return True
         kf = self.key_fields()
         if kf and len(kf) == 1 and kf[0] == k: return True
         return False
@@ -106,8 +108,8 @@ class Entity(Model):
                     return None
             return Key(self.__class__, *keyvals)
         else:
-            if self.__key__ is None: return None
-            return Key(self.__class__, self.__key__)
+            if getattr(self, KEY_FIELD) is None: return None
+            return Key(self.__class__, getattr(self, KEY_FIELD))
 
     def setkey(self, key : Key):
         """ Set's the value of the key for this entity.  This will result in the change of the entity itself being represented in the table. """
@@ -116,24 +118,24 @@ class Entity(Model):
         kf = self.key_fields()
         if not kf:
             assert key.size == 1, "Number of parts of key of default type must be 1"
-            self.__key__ = key.first_part
+            setattr(self, KEY_FIELD, key.first_part)
         else:
             assert len(kf) == key.size, "Number of parts in key is not same as number of key fields"
             for f,v in zip(kf, key.parts):
                 self.setfield(f, v)
 
     def __contains__(self, fieldname):
-        if fieldname == "__key__" and self.getkey() != None:
+        if fieldname == KEY_FIELD and self.getkey() != None:
             return True
         return super().__contains__(fieldname)
 
     def __getitem__(self, fieldname):
-        if fieldname == "__key__":
+        if fieldname == KEY_FIELD:
             return self.getkey()
         return super().__getitem__(fieldname)
 
     def setfield(self, fieldname, value, reject_invalid_field = False):
-        if self.is_key_field(fieldname):
+        if fieldname == KEY_FIELD:
             self.setkey(value)
         else:
             super().setfield(fieldname, value, reject_invalid_field)

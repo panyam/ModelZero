@@ -109,6 +109,7 @@ def get_param(source, param_name, validator=None, required=True, default=None, s
 
 def resolve_fqn(fqn):
     resolved = type(fqn) is not str
+    result = fqn
     if not resolved:
         parts = fqn.split(".")
         first,last = parts[:-1],parts[-1]

@@ -72,7 +72,7 @@ class ParamValidator(object):
                                     "for ('{param_name}' = {param}): {ve.message}")
                     param_errors[param_name].append(ve)
         if param_errors:
-            raise ValidationError("Validation failure", param_errors)
+            raise errors.ValidationError("Validation failure", param_errors)
         else:
             return self.target_method(*args, **kwargs)
             

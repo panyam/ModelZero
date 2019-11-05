@@ -2,7 +2,7 @@
 from typing import TypeVar, Generic, List, Union, Type
 from modelzero.core.engine import EngineMethod
 from modelzero.core.engine import Engine as CoreEngine
-from modelzero.core.entities import Key, Entity
+from modelzero.core.entities import Key, Entity, KEY_FIELD
 from modelzero.core.store import Query
 from .validators import ensure_missing
 
@@ -39,13 +39,13 @@ class Engine(Generic[T, M], CoreEngine):
             self.table.delete(entity)
 
     @EngineMethod
-    @EngineMethod.ValidateParam("patch", ensure_missing, ["__key__", "created_at"])
+    @EngineMethod.ValidateParam("patch", ensure_missing, [KEY_FIELD, "created_at"])
     def update(self, entity : T, patch : dict):
         entity.apply_patch(patch)
         self.table.put(entity)
         return entity 
 
-    @EngineMethod.ValidateParam("entity", ensure_missing, ["__key__"])
+    @EngineMethod.ValidateParam("entity", ensure_missing, [KEY_FIELD])
     def create(self, entity : T, viewer = None):
         return self.table.put(entity)
 

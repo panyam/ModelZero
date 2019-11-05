@@ -6,6 +6,7 @@ import os
 
 class World(object):
     """ All things in modelzero require a world to operate on.  The world provides the context for dependancies. """
+    __world_config__ = None
     @classmethod
     def get(cls):
         if not hasattr(cls, "the_world"):

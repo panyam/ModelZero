@@ -46,23 +46,22 @@ class KeyType(Generic[K]):
 class KeyField(LeafField):
     def __init__(self, entity_class, **kwargs):
         LeafField.__init__(self, KeyType[entity_class], **kwargs)
-
-    @property
-    def key_type(self):
-        return self.base_type
+        self._entity_class = entity_class
 
     @property
     def entity_class(self):
-        set_trace()
-        return self.key_type.entity_class
+        if type(self._entity_class) is str:
+            resolved, self._entity_class = resolve_fqn(self._entity_class)
+            assert resolved, f"Could not resolve entity class: {self._entity_class}"
+        return self._entity_class
 
     def validate(self, value):
-        self.key_type.resolve()
         from modelzero.core.entities import Key
         if type(value) is not Key:
             value = self.entity_class.Key(value)
         assert value.entity_class == self.entity_class, "Entity classes of key field ({}) and key value ({}) do not match".format(self.entity_class, value.entity_class)
-        return super().validate(value)
+        return value
+        # return super().validate(value)
 
 class RefField(LeafField):
     def __init__(self, model_class, **kwargs):
@@ -106,7 +105,7 @@ class DateTimeField(LeafField):
             try:
                 value = datetime.datetime.strptime(value, "%Y-%m-%d")
             except:
-                value = datetime.datetime.strptime(value, "%Y-%m-%d %h:%m:%s")
+                value = datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
         elif type(value) is int:
             value = datetime.datetime.utcfromtimeoffset(value)
         else:

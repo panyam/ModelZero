@@ -1,6 +1,6 @@
 
 import datetime
-from modelzero.core.entities import Entity
+from modelzero.core.entities import Entity, KEY_FIELD
 from modelzero.common.entities import *
 from modelzero.core.custom_fields import *
 
