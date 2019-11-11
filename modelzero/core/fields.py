@@ -2,7 +2,7 @@
 from ipdb import set_trace
 import datetime
 import typing
-from typing import TypeVar, Generic
+from typing import TypeVar, Generic, Optional
 import datetime
 from . import errors
 
@@ -15,7 +15,7 @@ class Field(object):
                                              else "has_" + self.field_name)
         self.default_value = kwargs.get("default", None)
         self.validators = kwargs.get("validators", [])
-        self.required = kwargs.get("required", True)
+        self.optional = kwargs.get("optional", False)
 
     def __get__(self, instance, objtype = None):
         if instance is None:
@@ -51,6 +51,11 @@ class Field(object):
             instance.__field_values__[field_name] = value
         return property(getter, setter)
 
+    def wrap_optionality(self, thetype):
+        if self.optional:
+            thetype = Optional[thetype]
+        return thetype
+
 class LeafField(Field):
     """ Leaf fields are simple fields that are stored as a single logical field. """
     def __init__(self, base_type = None, **kwargs):
@@ -61,7 +66,7 @@ class LeafField(Field):
     def logical_type(self):
         if not self.base_type:
             raise Exception("basetype not found")
-        return self.base_type
+        return self.wrap_optionality(self.base_type)
 
     def validate(self, value):
         if self.base_type:

@@ -1,0 +1,61 @@
+
+We dont want to manually create classes like this:
+
+    class Song:
+        field1 = ...
+        field2 = ...
+        field3 = ...
+
+    class SongPatch:
+        field1 = PatchCommand[Int]
+        field2 = PatchCommand[String]
+        field3 = ListPatchCommand[String]
+        field4 = PatchCommand[Patch[Address]]
+
+This is not only manual but also makes it hard to have changes in the Song model be kept in sync with the Patch model.
+
+What we would want is something like:
+
+    class Song:
+        field1 = ...
+        field2 = ...
+        field3 = ...
+        field3 = ...
+
+    Patch = patch_type_for_model(Song)
+
+    where
+
+    def patch_type_for_model(model):
+        if model not in patch_cache:
+            patch_cache[model] = Model([patch_type_for(field.logical_type) for field in model.fields])
+        return patch_cache[model]
+
+    def patch_type_for(thetype):
+        if is_leaf(thetype):
+            return "PatchCommand<swifttype_for(thetype)>"
+        else if is_listtype(thetype):
+            return "ListPatchCommand<thetype.child, patch_type_for(thetype.child)>"
+        else:
+            return patch_type_for_model(thetype.logicaltype)
+
+There is one complication, patch model creation is something that should be "contained" within some environment.
+
+For example if we had the followingmodel:
+
+class Person:
+    name : String
+    age : Int
+    address : Address
+
+
+Patch[Person] will create a patch model that knows how to deal with age and name fields but for address, will
+have to kick of the Patch[Address] class creation.   It could be that there already exists another
+Patch[Address] class that should be used but instead a new one is being created.  Or it may be that
+a completely custom one is required.
+
+So is it just to have Patch[Person] as is and not actually create a class but instead, use this to evaluate
+lazily when required.  This way we could fall back to a cache etc if and when required.
+
+This inturn means we have to treat Patch[X] differently to a ModelBase instance.  This is somethign we want to avoid 
+given ModelBase is our entry point into records and Patches being different is a slight pain.

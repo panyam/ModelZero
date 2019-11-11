@@ -103,10 +103,11 @@ class PatchModelMeta(ModelMeta):
 class PatchModel(with_metaclass(PatchModelMeta, PatchModelBase)):
     pass
 
-class Patch(typing.Generic[typing.TypeVar("M", bound = ModelBase)]): pass
-
 PatchType = TypeVar("PatchType")
 EntryType = TypeVar("EntryType")
+KeyType = TypeVar("KeyType")
+class PatchDoc(typing.Generic[EntryType]): pass
+class Patch(typing.Generic[KeyType, EntryType, PatchType]): pass
 
 class PatchCommand(Union, typing.Generic[PatchType]):
     SET = Variant(PatchType)

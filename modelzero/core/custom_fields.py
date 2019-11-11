@@ -15,7 +15,7 @@ class ListField(Field):
 
     @property
     def logical_type(self):
-        return self._logical_type
+        return self.wrap_optionality(self._logical_type)
 
 class MapField(Field):
     def __init__(self, key_type, value_type, **kwargs):
@@ -26,7 +26,7 @@ class MapField(Field):
 
     @property
     def logical_type(self):
-        return self._logical_type
+        return self.wrap_optionality(self._logical_type)
 
 class NativeField(Field):
     def __init__(self, wrapped_type, **kwargs):
@@ -35,7 +35,7 @@ class NativeField(Field):
 
     @property
     def logical_type(self):
-        return self._logical_type
+        return self.wrap_optionality(self._logical_type)
 
 class URL(str): pass
 
