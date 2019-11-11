@@ -1,17 +1,16 @@
 
 from ipdb import set_trace
+from modelzero.core import types
 from modelzero.core.fields import *
 from modelzero.core.entities import Entity
 from modelzero.utils import resolve_fqn
-from typing import TypeVar, Generic, List, Dict
-
-K = TypeVar("K", str, Entity)
 
 class ListField(Field):
     def __init__(self, child_type, **kwargs):
         Field.__init__(self, **kwargs)
         self.child_type = child_type
-        self._logical_type = List[child_type]
+        # self._logical_type = List[child_type]
+        self._logical_type = ListType[child_type]
 
     @property
     def logical_type(self):
@@ -22,26 +21,13 @@ class MapField(Field):
         Field.__init__(self, **kwargs)
         self.key_type = key_type
         self.value_type = value_type
-        self._logical_type = Dict[key_type, value_type]
+        self._logical_type = MapType[key_type, value_type]
 
     @property
     def logical_type(self):
         return self.wrap_optionality(self._logical_type)
 
-class NativeField(Field):
-    def __init__(self, wrapped_type, **kwargs):
-        Field.__init__(self, **kwargs)
-        self._logical_type = wrapped_type
-
-    @property
-    def logical_type(self):
-        return self.wrap_optionality(self._logical_type)
-
-class URL(str): pass
-
-class KeyType(Generic[K]):
-    def __call__(self, *args, **kwargs):
-        set_trace()
+# from typing import TypeVar, Generic
 
 class KeyField(LeafField):
     def __init__(self, entity_class, **kwargs):
@@ -56,6 +42,7 @@ class KeyField(LeafField):
         return self._entity_class
 
     def validate(self, value):
+        set_trace()
         from modelzero.core.entities import Key
         if type(value) is not Key:
             value = self.entity_class.Key(value)
@@ -68,37 +55,9 @@ class RefField(LeafField):
         Field.__init__(self, **kwargs)
         self.model_class = model_class
 
-class BytesField(LeafField):
-    def __init__(self, **kwargs):
-        LeafField.__init__(self, bytes, **kwargs)
-
-class StringField(LeafField):
-    def __init__(self, **kwargs):
-        LeafField.__init__(self, str, **kwargs)
-
-class URLField(LeafField):
-    def __init__(self, **kwargs):
-        LeafField.__init__(self, URL, **kwargs)
-
-class IntegerField(LeafField):
-    def __init__(self, **kwargs):
-        LeafField.__init__(self, int, **kwargs)
-
-class LongField(LeafField):
-    def __init__(self, **kwargs):
-        LeafField.__init__(self, int, **kwargs)
-
-class BooleanField(LeafField):
-    def __init__(self, **kwargs):
-        LeafField.__init__(self, bool, **kwargs)
-
-class FloatField(LeafField):
-    def __init__(self, **kwargs):
-        LeafField.__init__(self, float, **kwargs)
-
 class DateTimeField(LeafField):
     def __init__(self, **kwargs):
-        LeafField.__init__(self, datetime.datetime, **kwargs)
+        LeafField.__init__(self, DateTimeType, **kwargs)
 
     def validate(self, value):
         if type(value) is str:

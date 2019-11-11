@@ -1,10 +1,23 @@
 
 from ipdb import set_trace
 import datetime
-import typing
-from typing import TypeVar, Generic, Optional
 import datetime
 from . import errors
+from . import types
+
+IntType = types.Type.as_opaque_type("int", int)
+LongType = types.Type.as_opaque_type("long", int)
+StrType = types.Type.as_opaque_type("str", str)
+BytesType = types.Type.as_opaque_type("bytes", bytes)
+URLType = types.Type.as_opaque_type("URL", str)
+BoolType = types.Type.as_opaque_type("bool", bool)
+FloatType = types.Type.as_opaque_type("float", float)
+DoubleType = types.Type.as_opaque_type("double", float)
+ListType = types.Type.as_opaque_type("list", list)
+MapType = types.Type.as_opaque_type("map", map)
+KeyType = types.Type.as_opaque_type("key")
+DateTimeType = types.Type.as_opaque_type("DateTime", datetime.datetime)
+OptionalType = types.Type.as_opaque_type("Optional")
 
 class Field(object):
     USE_DEFAULT = None
@@ -53,13 +66,17 @@ class Field(object):
 
     def wrap_optionality(self, thetype):
         if self.optional:
-            thetype = Optional[thetype]
+            thetype = OptionalType[thetype]
         return thetype
 
 class LeafField(Field):
     """ Leaf fields are simple fields that are stored as a single logical field. """
     def __init__(self, base_type = None, **kwargs):
         Field.__init__(self, **kwargs)
+        if base_type:
+            from modelzero.core import types
+            if type(base_type) is not types.Type:
+                set_trace()
         self.base_type = base_type
 
     @property

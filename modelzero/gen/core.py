@@ -26,6 +26,7 @@ class GeneratorBase(object):
         return list in logical_type.mro()
 
     def is_key_type(self, logical_type):
+        set_trace()
         return fields.KeyType in logical_type.mro()
 
     def is_dict_type(self, logical_type):
