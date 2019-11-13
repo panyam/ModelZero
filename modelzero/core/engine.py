@@ -31,15 +31,15 @@ def ensure_access(target_member, accessor, permission : str):
     return True
 
 class EngineBase(object):
-    ModelClass = Entity
+    RecordClass = Entity
     def __init__(self, datastore, dev_mode = None):
         self.is_dev_mode = dev_mode or False
         self.datastore = datastore
-        self.table = datastore.get_table(self.model_class)
+        self.table = datastore.get_table(self.record_class)
 
     @property
-    def model_class(self):
-        return self.ModelClass
+    def record_class(self):
+        return self.RecordClass
 
 class EngineMethod(object):
     def __new__(cls, *args, **kwargs):
@@ -58,7 +58,7 @@ class EngineMethod(object):
         self.signature = inspect.signature(target_method)
         self.method_params = list(self.signature.parameters.keys())
         self.target_method = target_method
-        self.model_class = None
+        self.record_class = None
         self.validators = []
 
     def __get__(self, instance, klass):
@@ -154,16 +154,16 @@ class EngineMeta(type):
     """ A metaclass for services for to interact with entities. """
     def __new__(cls, name, bases, dct):
         x = super().__new__(cls, name, bases, dct)
-        model_class = getattr(x, "ModelClass", None)
-        if not model_class:
-            raise Exception("Service class MUST have an ModelClass class attribute to indicate resource classes being serviced.")
+        record_class = getattr(x, "RecordClass", None)
+        if not record_class:
+            raise Exception("Service class MUST have an RecordClass class attribute to indicate resource classes being serviced.")
 
         x.__service_methods__ = getattr(x, "__service_methods__", {}).copy()
         newentrys = {}
         for name,entry in x.__dict__.items():
             if not issubclass(entry.__class__, EngineMethod): continue
             x.__service_methods__[name] = entry
-            entry.model_class = model_class
+            entry.record_class = record_class
         return x
 
 class Engine(with_metaclass(EngineMeta, EngineBase)):

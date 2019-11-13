@@ -108,7 +108,7 @@ class GAETable(Table[T]):
     def fetch(self, query : Query[T]) -> List[T]:
         """ Queries the table for entries that match a certain conditions and then sorting (if required) and returns results in a particular window. """
         dsquery = self.dsclient.query(kind = self._entity_class.__fqn__)
-        efields = self._entity_class.__model_fields__
+        efields = self._entity_class.__record_fields__
         for f in query.filters:
             assert f.fieldname in efields, "Clause refers to field (%s) not in entity class (%s)" % (f.fieldname, self._entity_class)
             dsquery.add_filter(f.fieldname,

@@ -103,7 +103,7 @@ class Query(Generic[T]):
 
     def _add_clause(self, clause : Clause) -> "Query":
         # validate clase
-        assert clause.fieldname in self.entity_class.__model_fields__, "%s does not contain field %s" % (str(self.entity_class), clause.fieldname)
+        assert clause.fieldname in self.entity_class.__record_fields__, "%s does not contain field %s" % (str(self.entity_class), clause.fieldname)
         self._filter_clauses.append(clause)
         return self
 

@@ -2,22 +2,23 @@
 import datetime
 from modelzero.core.entities import *
 from modelzero.core.custom_fields import *
+from modelzero.core.types import *
 
 class Channel(Entity):
     # The type of login - "phone", "username", "email", "google", "twitter", "facebook" etc
-    login_type = LeafField(StrType, required = True, indexed = True)
+    login_type = Field(StrType, required = True, indexed = True)
 
     # The login_type + login_id is unique and forms the ID of this entity
-    login_id = LeafField(StrType, required = True, indexed = True)
+    login_id = Field(StrType, required = True, indexed = True)
 
     # The verification string used if required by this channel
-    verification_string = LeafField(StrType)
+    verification_string = Field(StrType)
 
     # When the verification was sent
     verification_sent_at = DateTimeField()
 
     # How long after the verification_sent_at is the verification valid for in seconds?
-    verification_timeout = LeafField(IntType, default = 60)
+    verification_timeout = Field(IntType, default = 60)
 
     # When this channel was verified - if this is None, then the channel has not been verified
     # and cannot be used for auth
@@ -27,7 +28,7 @@ class Channel(Entity):
     credentials = JsonField()
 
     # The session token that can be used to verify an api/user request on this channel
-    session_token = LeafField(BytesType)
+    session_token = Field(BytesType)
 
     # Which member is this login channel tied to.  A login channel can only be tied to a single member,
     # but several login channels can point to the same member

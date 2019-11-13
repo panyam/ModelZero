@@ -1,9 +1,30 @@
 
 import inspect
 from inspect import signature
+import typing
 from ipdb import set_trace
 from modelzero.core.resources import BaseResource
 from modelzero.utils import get_param 
+from modelzero.core import types
+
+def ensure_type(t):
+    if t is str:
+        return types.StrType
+    if t is int:
+        return types.IntType
+    if t is bool:
+        return types.BoolType
+    if type(t) is typing._GenericAlias:
+        if t.__origin__ == list:
+            return types.ListType[ensure_type(t.__args__[0])]
+        if t.__origin__ == dict:
+            return types.MapType[ensure_type(t.__args__[0]), ensure_type(t.__args__[1])]
+        set_trace()
+    try:
+        return types.ensure_type(t)
+    except Exception as exc:
+        set_trace()
+        raise exc
 
 class API(object):
     def __init__(self, name, router, description = "", url_prefix = ""):
@@ -71,8 +92,8 @@ class Method(object):
         self.expected_type = None
         self.returned_type = None
         self.params(*args, **kwargs)
-        self._return_annotation = None
-        self._param_annotations = None
+        self._return_type = None
+        self._param_types = None
 
     @property
     def query_params(self):
@@ -90,32 +111,35 @@ class Method(object):
         return None, None
 
     @property
-    def return_annotation(self):
-        if not self._return_annotation:
-            self._return_annotation = self.method_sig.return_annotation
-        if self._return_annotation is inspect._empty:
+    def return_type(self):
+        if not self._return_type:
+            self._return_type = ensure_type(self.method_sig.return_annotation)
+        if self._return_type is inspect._empty:
             return None
-        return self._return_annotation
+        return self._return_type
 
     @property
-    def param_annotations(self):
-        if not self._param_annotations:
-            self._param_annotations = {}
+    def param_types(self):
+        if self._param_types is None:
+            self._param_types = {}
             for name,param in self.method_sig.parameters.items():
                 # Ensure all required fields are covered in the API call
                 if param.default is inspect._empty:
                     if name not in self.kwargs:
                         raise Exception(f"Method param '{name}' not provided in router method: {self.fqn}")
-                self._param_annotations[name] = param
+                self._param_types[name] = None
+                if param.annotation and param.annotation is not inspect._empty:
+                    annot = param.annotation
+                    self._param_types[name] = ensure_type(annot)
 
             for name,param in self.kwargs.items():
                 # Ensure name is actually accepted by the param
-                if name not in self._param_annotations:
+                if name not in self._param_types:
                     raise Exception(f"Parameter '{name}' not accepted by method '{self.fqn}'")
-                ptype = self._param_annotations[name].annotation
-                if ptype is inspect._empty:
+                ptype = ensure_type(self._param_types[name])
+                if ptype is None:
                     raise Exception("Parameter '{name}' in '{self.fqn}' does not have a type annotation")
-        return self._param_annotations
+        return self._param_types
 
     @property
     def method(self):
@@ -133,16 +157,16 @@ class Method(object):
         """ Specification on the kind of parameters that can be accepted by this method.  These params should map to the params accepted by the handler/operation method. """
         self.args = args
         self.kwargs = kwargs
-        self._param_annotations = None
+        self._param_types = None
         return self
 
-    def expects(self, model_class):
-        self.expected_class = model_class
+    def expects(self, record_class):
+        self.expected_class = record_class
         return self
 
     def returns(self, retclass):
         self.returned_class = retclass
-        self._return_annotation = None
+        self._return_type = None
         return self
 
     def doc(self, name, doc = "", source = "query"):

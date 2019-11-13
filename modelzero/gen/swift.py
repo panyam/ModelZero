@@ -10,23 +10,23 @@ from modelzero.gen import core as gencore
 import modelzero.apigen.apispec
 from ipdb import set_trace
 
-model_class_template = Template("""
+record_class_template = Template("""
 class {{class_name}} : AbstractEntity {
-{%- for name, field in model_class.__model_fields__.items() %}
+{%- for name, field in record_class.__record_fields__.items() %}
     var {{name}} : {{ gen.swifttype_for(field.logical_type) }} = {{ gen.default_value_for(field.logical_type) }}
 {%- endfor %}
     enum CodingKeys : String, CodingKey {
-    {%- for name, field in model_class.__model_fields__.items() %}
+    {%- for name, field in record_class.__record_fields__.items() %}
         case {{name}}
     {%- endfor %}
     }
 }
 """)
 
-patch_model_class_template = Template("""
+patch_record_class_template = Template("""
 extension {{class_name}} {
     class Patch : Codable {
-    {%- for name, field in patch_model.__model_fields__.items() %}
+    {%- for name, field in patch_model.__record_fields__.items() %}
         var {{name}} : {{ gen.swifttype_for(field.logical_type) }}? = nil
     {%- endfor %}
     }
@@ -78,41 +78,41 @@ class Generator(gencore.GeneratorBase):
         # Map a patch class fqn to t
         self.patchclasses_by_fqn = {}
 
-    def name_for_model_class(self, model_class):
-        self.register_model_class(model_class)
-        efqn = model_class.__fqn__
+    def name_for_record_class(self, record_class):
+        self.register_record_class(record_class)
+        efqn = record_class.__fqn__
         if efqn not in self.fqn_to_classname:
-            raise KeyError(f"{model_class}")
+            raise KeyError(f"{record_class}")
         return self.fqn_to_classname[efqn]
 
-    def register_model_class(self, model_class, class_name = None):
-        efqn = model_class.__fqn__
+    def register_record_class(self, record_class, class_name = None):
+        efqn = record_class.__fqn__
         f2cn = self.fqn_to_classname.get(efqn, None)
-        class_name = class_name or model_class.__name__
+        class_name = class_name or record_class.__name__
         curr_eclass = self.models_by_name.get(class_name, None)
         if curr_eclass and self.models_by_name[class_name].__fqn__ != efqn:
             set_trace()
             raise Exception(f"Class name '{class_name}' already maps to a different entity class: {curr_eclass}")
         if f2cn and f2cn != class_name:
-            raise Exception(f"Entity class {model_class} is already mapped to {class_name}, Trying to remap to: {f2cn}")
+            raise Exception(f"Entity class {record_class} is already mapped to {class_name}, Trying to remap to: {f2cn}")
         if not curr_eclass:
-            self.models_by_name[class_name] = model_class
+            self.models_by_name[class_name] = record_class
         if not f2cn:
             self.fqn_to_classname[efqn] = class_name
         return self.fqn_to_classname[efqn]
 
     def resolve_fqn_or_model(self, fqn_or_model):
-        model_class = fqn_or_model
+        record_class = fqn_or_model
         if type(fqn_or_model) is str:
             if fqn_or_model not in self.fqn_to_model:
                 # resolve it
-                resolved, model_class = resolve_fqn(fqn_or_model)
-                self.fqn_to_model[fqn_or_model] = model_class
+                resolved, record_class = resolve_fqn(fqn_or_model)
+                self.fqn_to_model[fqn_or_model] = record_class
             else:
-                model_class = self.fqn_to_model[fqn_or_model]
-        if not issubclass(model_class, ModelBase):
-            raise(f"{model_class} is not a Model")
-        return model_class
+                record_class = self.fqn_to_model[fqn_or_model]
+        if not issubclass(record_class, ModelBase):
+            raise(f"{record_class} is not a Model")
+        return record_class
 
     def default_value_for(self, logical_type):
         assert not isinstance(logical_type, fields.Field), "Do not pass instances of Field"
@@ -170,7 +170,7 @@ class Generator(gencore.GeneratorBase):
             return "URL?"
         if self.is_key_type(logical_type):
             thetype = self.resolve_generic_arg(logical_type.__args__[0])
-            return f"Ref<{self.name_for_model_class(thetype)}>?"
+            return f"Ref<{self.name_for_record_class(thetype)}>?"
         # if logical_type == list: return "[Any]"
         # if logical_type == dict: return "[String : Any]"
         if self.is_list_type(logical_type):
@@ -180,15 +180,15 @@ class Generator(gencore.GeneratorBase):
             key_type = self.resolve_generic_arg(logical_type.__args__[0])
             val_type = self.resolve_generic_arg(logical_type.__args__[1])
             return f"[{self.swifttype_for(key_type)} : {self.swifttype_for(val_type)}]"
-        if self.is_patch_model_class(logical_type):
-            model_class = logical_type.ModelClass
-            return f"{self.name_for_model_class(model_class)}.Patch"
+        if self.is_patch_record_class(logical_type):
+            record_class = logical_type.RecordClass
+            return f"{self.name_for_record_class(record_class)}.Patch"
         if hasattr(logical_type, "__origin__"): # This is a generic type application
             origin = logical_type.__origin__
             if self.is_patch_type(logical_type):
                 patch_type = self.patch_model_for(logical_type.__args__[0])
-                model_class = patch_type.ModelClass
-                return f"{self.name_for_model_class(model_class)}.Patch"
+                record_class = patch_type.RecordClass
+                return f"{self.name_for_record_class(record_class)}.Patch"
             if origin is ListPatchCommand:
                 entry_arg = logical_type.__args__[0]
                 patch_arg = logical_type.__args__[1]
@@ -197,24 +197,24 @@ class Generator(gencore.GeneratorBase):
                 arg = logical_type.__args__[0]
                 return f"PatchCommand<{self.swifttype_for(arg)}>"
             return
-        if self.is_model_class(logical_type):
-            return f"{self.name_for_model_class(logical_type)}"
+        if self.is_record_class(logical_type):
+            return f"{self.name_for_record_class(logical_type)}"
         set_trace()
         assert False, f"Invalid logical_type: {logical_type}"
 
-    def class_for_model_class(self, model_class):
-        class_name = self.register_model_class(model_class)
+    def class_for_record_class(self, record_class):
+        class_name = self.register_record_class(record_class)
         # See if class_name is taken by another model
-        return model_class_template.render(gen = self,
-                    model_class = model_class,
+        return record_class_template.render(gen = self,
+                    record_class = record_class,
                     class_name = class_name)
 
-    def class_for_patch_model_class(self, model_class):
-        class_name = self.register_model_class(model_class)
+    def class_for_patch_record_class(self, record_class):
+        class_name = self.register_record_class(record_class)
         # See if class_name is taken by another model
-        patch_model = self.patch_model_for(model_class)
-        return patch_model_class_template.render(gen = self,
-                    model_class = model_class,
+        patch_model = self.patch_model_for(record_class)
+        return patch_record_class_template.render(gen = self,
+                    record_class = record_class,
                     class_name = class_name,
                     patch_model = patch_model)
 

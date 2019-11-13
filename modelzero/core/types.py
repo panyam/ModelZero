@@ -2,25 +2,45 @@
 from ipdb import set_trace
 from typing import List, Dict
 from taggedunion import Union, Variant
+import datetime
+from modelzero.core.records import Record
 
 def ensure_type(type_or_str):
     if type(type_or_str) is str:
         type_or_str = Type.as_type_ref(type_or_str)
+    elif type(type_or_str) is not Type:
+        if issubclass(type_or_str, Record):
+            type_or_str = Type.as_record_type(type_or_str)
+        else:
+            set_trace()
+            raise Exception(f"Expected type or string, found: {type_or_str}")
     return type_or_str
+
+class TypeApp(object): 
+    def __init__(self, origin_type : "Type", *args : List["Type"]):
+        self.origin_type = origin_type
+        self.type_args = [ensure_type(a) for a in args]
 
 class TypeRef(object):
     def __init__(self, target_fqn : str):
         self.target_fqn = target_fqn
+        self._target = None
+
+    @property
+    def target(self):
+        if self._target is None:
+            from modelzero.utils import resolve_fqn
+            resolved, self._target = resolve_fqn(self.target_fqn)
+            assert resolved
+        return self._target
 
 class TypeVar(object):
     def __init__(self, name : str):
         self.varname = name
 
 class DataType(object):
-    def __init__(self, name : str = None, tagged : bool = False):
+    def __init__(self, name : str = None):
         self._name = name
-        self._tagged = tagged
-        self._tags = []
         self._children = []
 
     @property
@@ -29,58 +49,65 @@ class DataType(object):
     @property
     def childcount(self): return len(self._children)
 
-    @property
-    def is_tagged(self): return self._tagged 
-
     def type_at(self, index): return self._children[index]
 
-    def tag_at(self, index): return self._tags[index]
-
-    def type_for_tag(self, tag):
-        if not self.is_tagged:
-            raise Exception("Data type is not tagged")
-        for childtag,T in zip(self._tags, self._children):
-            if tag == childtag: return T
-        return None
-
-    def add(self, *children : List["Type"], **tagged_children: Dict[str, "Type"]):
-        if self.is_tagged:
-            if children or not tagged_children:
-                raise Exception("Tagged data types must ONLY specify tagged_children parameter")
-            for child in children:
-                self._children.append(ensure_type(child))
-        else:
-            if tagged_children or not children:
-                raise Exception("Untagged data types must ONLY specify children parameter")
-                for tag, child in tagged_children.items():
-                    if tag in self._tags:
-                        raise Exception(f"Tag {tag} already exists.")
-                    self._tags.append(child)
-                    self._children.append(ensure_type(child))
+    def add(self, *children : List["Type"]):
+        for child in children:
+            self._children.append(ensure_type(child))
         return self
 
-class ProductType(DataType): pass
-class SumType(DataType): pass
-
-class OpaqueType(DataType):
+class OpaqueType(object):
     def __init__(self, name : str, native_type = None):
-        super().__init__(name = name)
+        self._name = name
         self._native_type = native_type
+
+    @property
+    def name(self): return self._name
 
     @property
     def native_type(self): return self._native_type
 
-    def add(self, *args, **kwargs):
-        # TODO: Is this always true?
-        raise Exception("Children cannot be added to Opaque/Native types")
+class RecordType(object):
+    def __init__(self, record_class_or_fqn):
+        if type(record_class_or_fqn) is str:
+            self._record_fqn = record_class_or_fqn
+            self._record_class = None
+        elif issubclass(record_class_or_fqn, Record):
+            self._record_fqn = record_class_or_fqn.__fqn__
+            self._record_class = record_class_or_fqn
+        else:
+            raise Exception(f"Found {record_class_or_fqn}, Expected str or 'Record' class")
 
-class TypeApp(object): 
-    def __init__(self, origin_type : "Type", *args : List["Type"]):
-        self.origin_type = origin_type
-        self.type_args = [ensure_type(a) for a in args]
+    @property
+    def record_class(self):
+        if self._record_class is None:
+            resolved, self._record_class = resolve_fqn(self._record_fqn)
+            assert resolved
+        return self._record_class
+
+class UnionType(object):
+    def __init__(self, union_class_or_fqn):
+        if type(union_class_or_fqn) is str:
+            self._union_fqn = union_class_or_fqn
+            self._union_class = None
+        elif issubclass(union_class_or_fqns, Union):
+            self._union_fqn = union_class_or_fqn.__fqn__
+            self._union_class = union_class_or_fqn
+        else:
+            raise Exception(f"Found {union_class_or_fqn}, Expected str or 'Union' class")
+
+    @property
+    def union_class(self):
+        if self._union_class is None:
+            resolved, self._union_class = resolve_fqn(self._union_fqn)
+            assert resolved
+        return self._union_class
+
+class SumType(DataType): pass
 
 class Type(Union):
-    prod_type = Variant(ProductType)
+    record_type = Variant(RecordType)
+    union_type = Variant(UnionType)
     sum_type = Variant(SumType)
     opaque_type = Variant(OpaqueType)
     type_app = Variant(TypeApp)
@@ -89,3 +116,17 @@ class Type(Union):
 
     def __getitem__(self, *keys):
         return Type.as_type_app(self, *keys)
+
+IntType = Type.as_opaque_type("int", int)
+LongType = Type.as_opaque_type("long", int)
+StrType = Type.as_opaque_type("str", str)
+BytesType = Type.as_opaque_type("bytes", bytes)
+URLType = Type.as_opaque_type("URL", str)
+BoolType = Type.as_opaque_type("bool", bool)
+FloatType = Type.as_opaque_type("float", float)
+DoubleType = Type.as_opaque_type("double", float)
+ListType = Type.as_opaque_type("list", list)
+MapType = Type.as_opaque_type("map", map)
+KeyType = Type.as_opaque_type("key")
+DateTimeType = Type.as_opaque_type("DateTime", datetime.datetime)
+OptionalType = Type.as_opaque_type("Optional")

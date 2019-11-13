@@ -4,7 +4,7 @@ from jinja2 import Template
 import datetime, typing, inspect
 import sys
 from modelzero.core import custom_fields as fields
-from modelzero.core.models import ModelBase, PatchModelBase, PatchModel, PatchCommand, ListPatchCommand
+from modelzero.core.records import Record, RecordBase
 from modelzero.core.entities import Entity
 from modelzero.utils import resolve_fqn
 import modelzero.apigen.apispec
@@ -23,28 +23,28 @@ class GeneratorBase(object):
         return logical_type in (bool, int, float, bytes, str, datetime.datetime, fields.URL, typing.Any) or self.is_key_type(logical_type)
 
     def is_list_type(self, logical_type):
-        return list in logical_type.mro()
+        return logical_type.is_opaque_type and logical_type.native_type == list
 
     def is_key_type(self, logical_type):
-        set_trace()
         return fields.KeyType in logical_type.mro()
 
     def is_dict_type(self, logical_type):
         return dict in logical_type.mro()
 
-    def is_patch_model_class(self, logical_type):
+    def is_patch_record_class(self, logical_type):
         try:
-            return issubclass(logical_type, PatchModelBase)
+            return issubclass(logical_type, PatchRecordBase)
         except Exception as exc:
             return False
 
-    def is_model_class(self, logical_type):
+    def is_record_class(self, logical_type):
         try:
-            return issubclass(logical_type, ModelBase) and not self.is_patch_model_class(logical_type)
+            return issubclass(logical_type, RecordBase) and not self.is_patch_record_class(logical_type)
         except Exception as exc:
             return False
 
     def optional_type_of(self, logical_type):
+        type_app = None
         if not self.is_union_type(logical_type): return None
         orig = getattr(logical_type, "__origin__", None)
         args = logical_type.__args__
@@ -61,9 +61,9 @@ class GeneratorBase(object):
         orig = getattr(logical_type, "__origin__", None)
         return orig is modelzero.core.models.Patch
 
-    def patch_model_for(self, model_class):
-        assert issubclass(model_class, ModelBase), f"{model_class} must be a subclass of Modelbase"
-        assert not issubclass(model_class, PatchModelBase), f"{model_class} cannot be a PatchModel instance"
+    def patch_model_for(self, record_class):
+        assert issubclass(record_class, RecordBase), f"{record_class} must be a subclass of RecordBase"
+        assert not issubclass(record_class, PatchRecordBase), f"{record_class} cannot be a PatchModel instance"
         # What should be the name of a Patch class?
         # Our patch classes are of the form "Patch[Model]"
         # while Model has a name, there is no name for Patch[Model]
@@ -74,9 +74,9 @@ class GeneratorBase(object):
         if pclass_name exists in self.pa
         patch_class = create_the_class(with_
         """
-        patch_model_class, newcreated = self.ensure_patch_model(model_class)
+        patch_record_class, newcreated = self.ensure_patch_model(record_class)
         if newcreated:
-            for name,field in model_class.__model_fields__.items():
+            for name,field in record_class.__record_fields__.items():
                 logical_type = field.logical_type
                 newfield = None
                 if self.is_leaf_type(logical_type):
@@ -93,20 +93,20 @@ class GeneratorBase(object):
                     newfield = fields.ListField(child_type)
                 else:
                     assert False, f"Cannot handle field type: {field}"
-                patch_model_class.register_field(name, newfield)
-        return patch_model_class
+                patch_record_class.register_field(name, newfield)
+        return patch_record_class
 
-    def ensure_patch_model(self, model_class):
+    def ensure_patch_model(self, record_class):
         newcreated = False
-        mfqn = model_class.__fqn__
+        mfqn = record_class.__fqn__
         if mfqn not in self.modelclass_fqn_to_patchclass_fqn:
             self.modelclass_fqn_to_patchclass_fqn[mfqn] = f"{mfqn}.PatchModel"
         patchclass_fqn = self.modelclass_fqn_to_patchclass_fqn[mfqn]
         if patchclass_fqn not in self.patchclasses_by_fqn:
             newcreated = True
-            patch_model = type(f"{model_class.__name__}_PatchModel",
+            patch_model = type(f"{record_class.__name__}_PatchModel",
                             (PatchModel,),
-                            dict(ModelClass = model_class,
+                            dict(RecordClass = record_class,
                                 __fqn__ = patchclass_fqn))
             self.patchclasses_by_fqn[patchclass_fqn] = patch_model
         return self.patchclasses_by_fqn[patchclass_fqn], newcreated

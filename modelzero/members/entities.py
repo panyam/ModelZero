@@ -5,10 +5,10 @@ from modelzero.common.entities import *
 from modelzero.core.custom_fields import *
 
 class Member(BaseEntity):
-    fullname = LeafField(StrType, required = True)
+    fullname = Field(StrType, required = True)
     date_of_birth = DateTimeField(required = True)
-    phone = LeafField(StrType, default="", indexed = True)
-    email = LeafField(StrType, default="", indexed = True)
+    phone = Field(StrType, default="", indexed = True)
+    email = Field(StrType, default="", indexed = True)
 
     @property
     def age(self):

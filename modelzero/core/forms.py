@@ -11,8 +11,8 @@ class ModelFormBase(FlaskForm):
     # as a default form for the model when used as StructField
     FormRegistry = {}
 
-    # The ModelClass for which this form is being rendered.
-    ModelClass = None
+    # The RecordClass for which this form is being rendered.
+    RecordClass = None
 
     # A list of field paths to be suppressed in the final form
     SuppressPaths = None
@@ -35,7 +35,7 @@ class ModelFormBase(FlaskForm):
         elif issubclass(field.__class__, BooleanField):
             return wtfields.BooleanField()
         elif issubclass(field.__class__, StructField):
-            form_class = cls.form_class_for(field.model_class)
+            form_class = cls.form_class_for(field.record_class)
             formfield = wtfields.FormField(form_class)
             return formfield
         elif issubclass(field.__class__, ListField):
@@ -49,22 +49,22 @@ class ModelFormBase(FlaskForm):
             assert False, f"Invalid field class: {field.__class__} - {field.field_name}"
 
     @classmethod
-    def form_class_for(cls, model_class):
+    def form_class_for(cls, record_class):
         """ Returns the flask form class for a particular model class.
         If such a class does not already exist or is not registered, a 
         default one is created. """
         FormRegistry = cls.FormRegistry
-        if model_class not in FormRegistry:
-            NewForm = type(f"{model_class.__name__}Form",
+        if record_class not in FormRegistry:
+            NewForm = type(f"{record_class.__name__}Form",
                             (ModelForm,),
-                            dict(ModelClass = model_class))
-            FormRegistry[model_class] = NewForm
-        return FormRegistry[model_class]
+                            dict(RecordClass = record_class))
+            FormRegistry[record_class] = NewForm
+        return FormRegistry[record_class]
 
     @classmethod
     def load_model_fields(cls):
-        eclass = cls.ModelClass
-        model_fields = eclass.__model_fields__
+        eclass = cls.RecordClass
+        model_fields = eclass.__record_fields__
         for field_name, field in model_fields.items():
             # Ensure field_name is not already defined
             if not hasattr(cls, field_name):
