@@ -2,7 +2,6 @@
 from ipdb import set_trace
 from typing import List, Dict
 from taggedunion import Union, Variant
-import datetime
 from modelzero.core.records import Record
 
 def ensure_type(type_or_str):
@@ -117,16 +116,3 @@ class Type(Union):
     def __getitem__(self, *keys):
         return Type.as_type_app(self, *keys)
 
-IntType = Type.as_opaque_type("int", int)
-LongType = Type.as_opaque_type("long", int)
-StrType = Type.as_opaque_type("str", str)
-BytesType = Type.as_opaque_type("bytes", bytes)
-URLType = Type.as_opaque_type("URL", str)
-BoolType = Type.as_opaque_type("bool", bool)
-FloatType = Type.as_opaque_type("float", float)
-DoubleType = Type.as_opaque_type("double", float)
-ListType = Type.as_opaque_type("list", list)
-MapType = Type.as_opaque_type("map", map)
-KeyType = Type.as_opaque_type("key")
-DateTimeType = Type.as_opaque_type("DateTime", datetime.datetime)
-OptionalType = Type.as_opaque_type("Optional")

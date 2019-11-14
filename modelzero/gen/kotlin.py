@@ -13,18 +13,14 @@ from ipdb import set_trace
 class Generator(gencore.GeneratorBase):
     """ Generates model bindings for model to Swift.  """
     def __init__(self):
-        # Swift does not have packages so we need names to be unique
-        # and this uniqueness can come by not ensuring two classes globally 
-        # dont have the same name *or* letting user specify an alternative name
-        # 
+        super().__init__()
+
+        # For each logical type we want to create the Kotlin type.   We want to model Kotlin
+        # types using our types too since we are essentially looking at type transformation
+        # where both the kotlin type, its location (namespace) and structure (fields) may differ
         self.models_by_name = {}
         self.fqn_to_classname = {}
         self.fqn_to_model = {}
-
-        # Map a modelclass fqn to its patchclass name
-        self.modelclass_fqn_to_patchclass_fqn = {}
-        # Map a patch class fqn to t
-        self.patchclasses_by_fqn = {}
 
     def name_for_record_class(self, record_class):
         self.register_record_class(record_class)
@@ -144,6 +140,82 @@ class Generator(gencore.GeneratorBase):
                                           path_prefix = path_prefix,
                                           gen = self)
 
+class KotlinTypeFor(CaseMatcher):
+    __caseon__ = types.Type
+    def __init__(self, gen):
+        self.gen = gen
+
+    def valueOf(self, thetype : types.Type):
+        if thetype not in gen.kotlin_types:
+            gen.kotlin_types[thetype] = self(thetype)
+        return gen.kotlin_types[thetype]
+
+    @case("opaque_type")
+    def valueOfOpaqueType(self, thetype : types.OpaqueType):
+        if thetype.name == "bool": return "Boolean"
+        if thetype.name == "int": return "Int"
+        if thetype.name == "long": return "Long"
+        if thetype.name == "float": return "Float"
+        if thetype.name == "double": return "Double"
+        if thetype.name == "bytes": return "Data"
+        if thetype.name == "str": return "String"
+        if thetype.name == "URL": return "URL"
+        if thetype.native_type == typing.Any: return "Any"
+        if thetype.native_type == datetime.datetime: return "Date"
+        assert False, f"Invald opaque type encountered: {thetype}"
+
+    @case("record_type")
+    def valueOfRecordType(self, record_type : types.RecordType):
+        record_class = record_type.record_class
+        return f"{self.gen.name_for_record_class(record_class)}"
+
+    @case("union_type")
+    def valueOfUnionType(self, union_type : types.UnionType):
+        set_trace()
+
+    @case("sum_type")
+    def valueOfSumType(self, thetype : types.SumType):
+        set_trace()
+
+    @case("type_var")
+    def valueOfTypeVar(self, thetype : types.TypeVar):
+        set_trace()
+
+    @case("type_ref")
+    def valueOfTypeRef(self, thetype : types.TypeRef):
+        set_trace()
+
+    @case("type_app")
+    def valueOfTypeApp(self, type_app : types.TypeApp):
+        gen = self.gen
+        origin_type = type_app.origin_type
+        if not origin_type.is_opaque_type:
+            raise Exception("Type application for non-opaque types not yet supported")
+        else:
+            opaque_type = origin_type.opaque_type
+            if opaque_type.native_type == list:
+                childtype = type_app.type_args[0]
+                return f"List<{self(childtype)}>"
+            if opaque_type.native_type == dict:
+                key_type = type_app.type_args[0]
+                val_type = type_app.type_args[1]
+                return f"Map<{self(key_type)}, {self(val_type)}>"
+            if opaque_type.name == "Optional":
+                optional_of = type_app.type_args[0]
+                return f"{self(optional_of)}?"
+            if opaque_type.name == "key":
+                reftype = type_app.type_args[0]
+                if reftype.is_record_type:
+                    record_class = reftype.record_class
+                elif reftype.is_type_ref:
+                    record_class = reftype.target
+                else:
+                    set_trace()
+                    assert False
+                return f"Ref<{gen.name_for_record_class(record_class)}>"
+        set_trace()
+        raise Exception("Invalid type: {type_app}")
+
 class KotlinTypeEval(CaseMatcher):
     __caseon__ = types.Type
     def __init__(self, gen):
@@ -215,27 +287,8 @@ class KotlinTypeEval(CaseMatcher):
                     set_trace()
                     assert False
                 return f"Ref<{gen.name_for_record_class(record_class)}>"
-
         set_trace()
-        if self.is_patch_record_class(type_app):
-            record_class = type_app.ModelClass
-            return f"{self.name_for_record_class(record_class)}.Patch"
-        if hasattr(type_app, "__origin__"): # This is a generic type application
-            origin = type_app.__origin__
-            if self.is_patch_type(type_app):
-                patch_type = self.patch_model_for(type_app.__args__[0])
-                record_class = patch_type.ModelClass
-                return f"{self.name_for_record_class(record_class)}.Patch"
-            if origin is ListPatchCommand:
-                entry_arg = type_app.__args__[0]
-                patch_arg = type_app.__args__[1]
-                return f"ListPatchCommand<{self.kotlintype_for(entry_arg)}, {self.kotlintype_for(patch_arg)}>"
-            if origin is PatchCommand:
-                arg = type_app.__args__[0]
-                return f"PatchCommand<{self.kotlintype_for(arg)}>"
-            return
-        set_trace()
-        assert False, f"Invalid type_app: {type_app}"
+        raise Exception("Invalid type: {type_app}")
 
 class DefaultValue(CaseMatcher):
     """ Returns the native default value for a given type. """
@@ -373,10 +426,5 @@ class ConverterCall(CaseMatcher):
                     set_trace()
                     assert False
                 return f"refFromAny<{gen.name_for_record_class(record_class)}>({varvalue}!!)"
-
         set_trace()
-        if self.is_patch_record_class(type_app):
-            record_class = type_app.ModelClass
-            return f"{self.name_for_record_class(record_class)}.Patch({varvalue})"
-        set_trace()
-        return f"{converter_name}({varvalue})"
+        raise Exception("Invalid type: {type_app}")

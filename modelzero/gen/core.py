@@ -1,9 +1,11 @@
 
 import jinja2, os
+from jinja2 import StrictUndefined
 from jinja2 import Template
 import datetime, typing, inspect
 import sys
 from modelzero.core import custom_fields as fields
+from modelzero.core import types
 from modelzero.core.records import Record, RecordBase
 from modelzero.core.entities import Entity
 from modelzero.utils import resolve_fqn
@@ -11,6 +13,12 @@ import modelzero.apigen.apispec
 from ipdb import set_trace
 
 class GeneratorBase(object):
+    def __init__(self):
+        self.streams = {}
+
+    def close_all_streams(self):
+        pass
+
     def resolve_generic_arg(self, arg):
         if type(arg) is typing.ForwardRef:
             fqn_or_eclass = arg.__forward_arg__
@@ -41,6 +49,8 @@ class GeneratorBase(object):
         try:
             return issubclass(logical_type, RecordBase) and not self.is_patch_record_class(logical_type)
         except Exception as exc:
+            if type(logical_type) is not types.Type:
+                set_trace()
             return False
 
     def optional_type_of(self, logical_type):
@@ -116,6 +126,7 @@ class GeneratorBase(object):
                                 "templates")
         templateLoader = jinja2.FileSystemLoader(searchpath=location)
         templateEnv = jinja2.Environment(loader=templateLoader)
+        templateEnv.undefined = StrictUndefined
         TEMPLATE_FILE = f"{tpl_name}.tpl"
         return templateEnv.get_template(TEMPLATE_FILE)
 

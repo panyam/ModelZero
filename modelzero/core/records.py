@@ -59,8 +59,8 @@ class Field(object):
 
     def wrap_optionality(self, thetype):
         if self.optional:
-            from modelzero.core import types
-            thetype = types.OptionalType[thetype]
+            from modelzero.core.custom_types import MZTypes
+            thetype = MZTypes.Optional[thetype]
         return thetype
 
     @property
