@@ -12,51 +12,20 @@ from ipdb import set_trace
 
 class Generator(gencore.GeneratorBase):
     """ Generates model bindings for model to Swift.  """
-    def __init__(self):
+    def __init__(self, target_models_package):
         super().__init__()
+        self.target_models_package = target_models_package
 
         # For each logical type we want to create the Kotlin type.   We want to model Kotlin
         # types using our types too since we are essentially looking at type transformation
         # where both the kotlin type, its location (namespace) and structure (fields) may differ
-        self.models_by_name = {}
-        self.fqn_to_classname = {}
-        self.fqn_to_model = {}
+        self.kotlin_types = {}
 
-    def name_for_record_class(self, record_class):
-        self.register_record_class(record_class)
-        efqn = record_class.__fqn__
-        if efqn not in self.fqn_to_classname:
-            raise KeyError(f"{record_class}")
-        return self.fqn_to_classname[efqn]
-
-    def register_record_class(self, record_class, class_name = None):
-        efqn = record_class.__fqn__
-        f2cn = self.fqn_to_classname.get(efqn, None)
-        class_name = class_name or record_class.__name__
-        curr_eclass = self.models_by_name.get(class_name, None)
-        if curr_eclass and self.models_by_name[class_name].__fqn__ != efqn:
-            set_trace()
-            raise Exception(f"Class name '{class_name}' already maps to a different entity class: {curr_eclass}")
-        if f2cn and f2cn != class_name:
-            raise Exception(f"Entity class {record_class} is already mapped to {class_name}, Trying to remap to: {f2cn}")
-        if not curr_eclass:
-            self.models_by_name[class_name] = record_class
-        if not f2cn:
-            self.fqn_to_classname[efqn] = class_name
-        return self.fqn_to_classname[efqn]
-
-    def resolve_fqn_or_model(self, fqn_or_model):
-        record_class = fqn_or_model
-        if type(fqn_or_model) is str:
-            if fqn_or_model not in self.fqn_to_model:
-                # resolve it
-                resolved, record_class = resolve_fqn(fqn_or_model)
-                self.fqn_to_model[fqn_or_model] = record_class
-            else:
-                record_class = self.fqn_to_model[fqn_or_model]
-        if not issubclass(record_class, ModelBase):
-            raise(f"{record_class} is not a Model")
-        return record_class
+    def ensure_kotlin_type(self, fqn):
+        newcreated = fqn not in self.kotlin_types
+        if newcreated:
+            self.kotlin_types[fqn] = types.Type()
+        return self.kotlin_types[fqn], newcreated
 
     def default_value_for(self, logical_type):
         assert type(logical_type) is types.Type
@@ -82,39 +51,24 @@ class Generator(gencore.GeneratorBase):
             logical_type = types.Type.as_record_type(logical_type)
         if type(logical_type) is not types.Type:
             set_trace()
-        return ConverterCall(self).valueOf(logical_type, varvalue)
+        return ConverterCall(self)(logical_type, varvalue)
         
-    def kotlintype_for(self, logical_type):
+    def kotlin_type_for(self, logical_type):
+        """ Returns the transformed kotlin type for a given logical type. """
+        return KotlinTypeFor(self)(logical_type)
+
+    def kotlin_sig_for(self, logical_type):
         if self.is_record_class(logical_type):
             logical_type = types.Type.as_record_type(logical_type)
         if type(logical_type) is not types.Type:
             set_trace()
             raise Exception(f"Expecting Type instance, found: {logical_type}")
-        """
-        if self.is_record_class(logical_type):
-            return f"{self.name_for_record_class(logical_type)}"
-        if type(logical_type) is not types.Type:
-            set_trace()
-            raise Exception(f"Expecting Type instance, found: {logical_type}")
-        """
-        return KotlinTypeEval(self).valueOf(logical_type)
+        return KotlinTypeSig(self)(logical_type)
 
     def class_for_record_class(self, record_class):
-        class_name = self.register_record_class(record_class)
         # See if class_name is taken by another model
         return self.load_template("kotlin/record_class").render(gen = self,
-                    record_class = record_class,
-                    class_name = class_name)
-
-    def class_for_patch_record_class(self, record_class):
-        class_name = self.register_record_class(record_class)
-        # See if class_name is taken by another model
-        patch_model = self.patch_model_for(record_class)
-        return patch_record_class_template.render(gen = self,
-                    record_class = record_class,
-                    class_name = class_name,
-                    patch_model = patch_model)
-
+                    record_class = record_class.record_type.record_class)
 
     def kotlinclient_for(self, router, class_name):
         """ Generate the client with method per call in the API router. """
@@ -135,9 +89,14 @@ class Generator(gencore.GeneratorBase):
         path_prefix = prefix
         for name, param in method.patharg_params.items():
             path_prefix = path_prefix.replace(f"{{{name}}}", f"${name}")
+
+        return_type = self.kotlin_type_for(method.return_type)
+        param_types = {n: self.kotlin_type_for(pt) for n,pt in method.param_types.items()}
         return self.load_template("kotlin/api_method").render(method = method,
                                           http_method = http_method,
                                           path_prefix = path_prefix,
+                                          param_types = param_types,
+                                          return_type = return_type,
                                           gen = self)
 
 class KotlinTypeFor(CaseMatcher):
@@ -145,160 +104,164 @@ class KotlinTypeFor(CaseMatcher):
     def __init__(self, gen):
         self.gen = gen
 
-    def valueOf(self, thetype : types.Type):
-        if thetype not in gen.kotlin_types:
-            gen.kotlin_types[thetype] = self(thetype)
-        return gen.kotlin_types[thetype]
-
     @case("opaque_type")
-    def valueOfOpaqueType(self, thetype : types.OpaqueType):
-        if thetype.name == "bool": return "Boolean"
-        if thetype.name == "int": return "Int"
-        if thetype.name == "long": return "Long"
-        if thetype.name == "float": return "Float"
-        if thetype.name == "double": return "Double"
-        if thetype.name == "bytes": return "Data"
-        if thetype.name == "str": return "String"
-        if thetype.name == "URL": return "URL"
-        if thetype.native_type == typing.Any: return "Any"
-        if thetype.native_type == datetime.datetime: return "Date"
-        assert False, f"Invald opaque type encountered: {thetype}"
+    def kTypeForOpaqueType(self, thetype : types.OpaqueType):
+        t = None
+        gen = self.gen
+        if thetype.name == "bool":
+            t,nc = gen.ensure_kotlin_type("Boolean")
+            if nc: t.opaque_type = types.OpaqueType("Boolean")
+        if thetype.name == "int":
+            t,nc = gen.ensure_kotlin_type("Int")
+            if nc: t.opaque_type = types.OpaqueType("Int")
+        if thetype.name == "long":
+            t,nc = gen.ensure_kotlin_type("Long")
+            if nc: t.opaque_type = types.OpaqueType("Long")
+        if thetype.name == "float":
+            t,nc = gen.ensure_kotlin_type("Float")
+            if nc: t.opaque_type = types.OpaqueType("Float")
+        if thetype.name == "double":
+            t,nc = gen.ensure_kotlin_type("Double")
+            if nc: t.opaque_type = types.OpaqueType("Double")
+        if thetype.name == "str":
+            t,nc = gen.ensure_kotlin_type("String")
+            if nc: t.opaque_type = types.OpaqueType("String")
+        if thetype.name == "bytes":
+            t,nc = gen.ensure_kotlin_type("Data")
+            if nc: t.opaque_type = types.OpaqueType("Data")
+        if thetype.name == "URL":
+            t,nc = gen.ensure_kotlin_type("URL")
+            if nc: t.opaque_type = types.OpaqueType("URL")
+        if thetype.native_type == typing.Any:
+            t,nc = gen.ensure_kotlin_type("Any")
+            if nc: t.opaque_type = types.OpaqueType("Any")
+        if thetype.native_type == datetime.datetime:
+            t,nc = gen.ensure_kotlin_type("Date")
+            if nc: t.opaque_type = types.OpaqueType("Date")
+        if thetype.name == "list":
+            t,nc = gen.ensure_kotlin_type("List")
+            if nc: t.opaque_type = types.OpaqueType("List")
+        if thetype.name == "map":
+            t,nc = gen.ensure_kotlin_type("Map")
+            if nc: t.opaque_type = types.OpaqueType("Map")
+        if thetype.name == "key":
+            t,nc = gen.ensure_kotlin_type("Ref")
+            if nc: t.opaque_type = types.OpaqueType("Ref")
+        if t is None:
+            set_trace()
+            raise Exception(f"Invalid opaque type encountered: {thetype.name}")
+        return t
 
     @case("record_type")
-    def valueOfRecordType(self, record_type : types.RecordType):
+    def kTypeForRecordType(self, record_type : types.RecordType):
+        gen = self.gen
         record_class = record_type.record_class
-        return f"{self.gen.name_for_record_class(record_class)}"
+        # TODO - should name be the same?
+        new_name = record_class.__fqn__.split(".")[-1]
+        new_fqn = f"{gen.target_models_package}.{new_name}"
+        t,nc = gen.ensure_kotlin_type(new_fqn)
+        if nc:
+            class_dict = dict(SourceRecordClass = record_class,
+                              __module__ = gen.target_models_package,
+                              __fqn__ = new_fqn)
+            new_record_class = type(new_name,
+                                    (types.Record,),
+                                    class_dict)
+            t.record_type = types.RecordType(new_record_class)
+            for name,field in record_class.__record_fields__.items():
+                newfield = field.clone()
+                newfield.base_type = self(field.base_type)
+                new_record_class.register_field(name, newfield)
+        return t
 
     @case("union_type")
-    def valueOfUnionType(self, union_type : types.UnionType):
+    def kTypeForUnionType(self, union_type : types.UnionType):
         set_trace()
 
     @case("sum_type")
-    def valueOfSumType(self, thetype : types.SumType):
+    def kTypeForSumType(self, thetype : types.SumType):
         set_trace()
 
     @case("type_var")
-    def valueOfTypeVar(self, thetype : types.TypeVar):
+    def kTypeForTypeVar(self, thetype : types.TypeVar):
         set_trace()
 
     @case("type_ref")
-    def valueOfTypeRef(self, thetype : types.TypeRef):
-        set_trace()
+    def kTypeForTypeRef(self, thetype : types.TypeRef):
+        target = thetype.target
+        if not hasattr(target, "SourceRecordClass"):
+            # Then it is possible this class has not yet been "reached"
+            # So kick off its 
+            return self.kTypeForRecordType(types.RecordType(target))
+        else:
+            return Type.as_record_type(types.RecordType(target))
 
     @case("type_app")
-    def valueOfTypeApp(self, type_app : types.TypeApp):
+    def kTypeForTypeApp(self, type_app : types.TypeApp):
         gen = self.gen
         origin_type = type_app.origin_type
-        if not origin_type.is_opaque_type:
-            raise Exception("Type application for non-opaque types not yet supported")
-        else:
-            opaque_type = origin_type.opaque_type
-            if opaque_type.native_type == list:
-                childtype = type_app.type_args[0]
-                return f"List<{self(childtype)}>"
-            if opaque_type.native_type == dict:
-                key_type = type_app.type_args[0]
-                val_type = type_app.type_args[1]
-                return f"Map<{self(key_type)}, {self(val_type)}>"
-            if opaque_type.name == "Optional":
-                optional_of = type_app.type_args[0]
-                return f"{self(optional_of)}?"
-            if opaque_type.name == "key":
-                reftype = type_app.type_args[0]
-                if reftype.is_record_type:
-                    record_class = reftype.record_class
-                elif reftype.is_type_ref:
-                    record_class = reftype.target
-                else:
-                    set_trace()
-                    assert False
-                return f"Ref<{gen.name_for_record_class(record_class)}>"
-        set_trace()
-        raise Exception("Invalid type: {type_app}")
+        new_origin_type = self(origin_type)
+        new_type_args = [self(a) for a in type_app.type_args]
+        result = new_origin_type.__getitem__(*new_type_args)
+        if result.origin_type.name == "Ref":
+            if result.type_args[0].is_type_app:
+                set_trace()
+        return result
 
-class KotlinTypeEval(CaseMatcher):
+class KotlinTypeSig(CaseMatcher):
     __caseon__ = types.Type
     def __init__(self, gen):
         self.gen = gen
 
-    def valueOf(self, thetype : types.Type):
-        return self(thetype)
-
     @case("opaque_type")
-    def valueOfOpaqueType(self, thetype : types.OpaqueType):
-        if thetype.name == "bool": return "Boolean"
-        if thetype.name == "int": return "Int"
-        if thetype.name == "long": return "Long"
-        if thetype.name == "float": return "Float"
-        if thetype.name == "double": return "Double"
-        if thetype.name == "bytes": return "Data"
-        if thetype.name == "str": return "String"
-        if thetype.name == "URL": return "URL"
-        if thetype.native_type == typing.Any: return "Any"
-        if thetype.native_type == datetime.datetime: return "Date"
-        assert False, f"Invald opaque type encountered: {thetype}"
+    def sigForOpaqueType(self, thetype : types.OpaqueType):
+        return thetype.name
 
     @case("record_type")
-    def valueOfRecordType(self, record_type : types.RecordType):
+    def sigForRecordType(self, record_type : types.RecordType):
         record_class = record_type.record_class
-        return f"{self.gen.name_for_record_class(record_class)}"
+        return f"{record_class.__fqn__}"
 
     @case("union_type")
-    def valueOfUnionType(self, union_type : types.UnionType):
+    def sigForUnionType(self, union_type : types.UnionType):
         set_trace()
 
     @case("sum_type")
-    def valueOfSumType(self, thetype : types.SumType):
+    def sigForSumType(self, thetype : types.SumType):
         set_trace()
 
     @case("type_var")
-    def valueOfTypeVar(self, thetype : types.TypeVar):
+    def sigForTypeVar(self, thetype : types.TypeVar):
         set_trace()
 
     @case("type_ref")
-    def valueOfTypeRef(self, thetype : types.TypeRef):
+    def sigForTypeRef(self, thetype : types.TypeRef):
         set_trace()
 
     @case("type_app")
-    def valueOfTypeApp(self, type_app : types.TypeApp):
+    def sigForTypeApp(self, type_app : types.TypeApp):
         gen = self.gen
         origin_type = type_app.origin_type
         if not origin_type.is_opaque_type:
             raise Exception("Type application for non-opaque types not yet supported")
         else:
             opaque_type = origin_type.opaque_type
-            if opaque_type.native_type == list:
-                childtype = type_app.type_args[0]
-                return f"List<{self(childtype)}>"
-            if opaque_type.native_type == dict:
-                key_type = type_app.type_args[0]
-                val_type = type_app.type_args[1]
-                return f"Map<{self(key_type)}, {self(val_type)}>"
             if opaque_type.name == "Optional":
                 optional_of = type_app.type_args[0]
                 return f"{self(optional_of)}?"
-            if opaque_type.name == "key":
-                reftype = type_app.type_args[0]
-                if reftype.is_record_type:
-                    record_class = reftype.record_class
-                elif reftype.is_type_ref:
-                    record_class = reftype.target
-                else:
-                    set_trace()
-                    assert False
-                return f"Ref<{gen.name_for_record_class(record_class)}>"
-        set_trace()
+            child_type_sigs = map(self, type_app.type_args)
+            return f"""{self(origin_type)}<{", ".join(child_type_sigs)}>"""
         raise Exception("Invalid type: {type_app}")
 
 class DefaultValue(CaseMatcher):
     """ Returns the native default value for a given type. """
     __caseon__ = types.Type
 
-    def valueOf(self, thetype : types.Type):
+    def defValFor(self, thetype : types.Type):
         return self(thetype)
 
     @case("opaque_type")
-    def valueOfOpaqueType(self, thetype : types.OpaqueType):
+    def defValForOpaqueType(self, thetype : types.OpaqueType):
         if thetype.name == "bool": return "false"
         if thetype.name in ("int", "long"): return "0"
         if thetype.name in ("float", "double"): return "0"
@@ -307,30 +270,30 @@ class DefaultValue(CaseMatcher):
         if thetype.name == "URL": return 'URL("http://")'
         if thetype.native_type == typing.Any: return "null"
         if thetype.native_type == datetime.datetime: return "Date()"
-        assert False, f"Invald opaque type encountered: {thetype}"
+        assert False, f"Invalid opaque type encountered: {thetype}"
 
     @case("record_type")
-    def valueOfRecordType(self, thetype : types.RecordType):
+    def defValForRecordType(self, thetype : types.RecordType):
         set_trace()
 
     @case("union_type")
-    def valueOfUnionType(self, union_type : types.UnionType):
+    def defValForUnionType(self, union_type : types.UnionType):
         set_trace()
 
     @case("sum_type")
-    def valueOfSumType(self, thetype : types.SumType):
+    def defValForSumType(self, thetype : types.SumType):
         set_trace()
 
     @case("type_var")
-    def valueOfTypeVar(self, thetype : types.TypeVar):
+    def defValForTypeVar(self, thetype : types.TypeVar):
         set_trace()
 
     @case("type_ref")
-    def valueOfTypeRef(self, thetype : types.TypeRef):
+    def defValForTypeRef(self, thetype : types.TypeRef):
         set_trace()
 
     @case("type_app")
-    def valueOfTypeApp(self, thetype : types.TypeApp):
+    def defValForTypeApp(self, thetype : types.TypeApp):
         set_trace()
         if self.optional_type_of(logical_type):
             optional_of = self.optional_type_of(logical_type)
@@ -354,46 +317,37 @@ class ConverterCall(CaseMatcher):
     def __init__(self, gen):
         self.gen = gen
 
-    def valueOf(self, thetype : types.Type, varvalue):
-        return self(thetype, varvalue)
-
     @case("opaque_type")
-    def valueOfOpaqueType(self, thetype : types.OpaqueType, varvalue):
-        if thetype.name == "bool": return f"boolFromAny({varvalue}!!)"
-        if thetype.name == "int": return f"intFromAny({varvalue}!!)"
-        if thetype.name == "long": return f"longFromAny({varvalue}!!)"
-        if thetype.name == "float": return f"floatFromAny({varvalue}!!)"
-        if thetype.name == "double": return f"doubleFromAny({varvalue}!!)"
-        if thetype.name == "str": return f"stringFromAny({varvalue}!!)"
-        if thetype.name == "URL": return f"urlFromAny({varvalue}!!)"
-        if thetype.name == "bytes": return f"bytesFromAny({varvalue}!!)"
-        if thetype.native_type == datetime.datetime: return f"dateFromAny({varvalue}!!)"
-        if thetype.native_type == typing.Any: return "Any"
-        assert False, f"Invald opaque type encountered: {thetype}"
+    def callForOpaqueType(self, thetype : types.OpaqueType, varvalue):
+        if thetype.name == "Any": return f"{varvalue}!!"
+        if thetype.name in ("Boolean", "Int", "Long", "Float", "Double", "String", "URL", "Data", "Date"):
+            return f"{thetype.name.lower()}FromAny({varvalue}!!)"
+        set_trace()
+        assert False, f"Invalid opaque type encountered: {thetype.name}"
 
     @case("record_type")
-    def valueOfRecordType(self, record_type : types.RecordType, varvalue):
+    def callForRecordType(self, record_type : types.RecordType, varvalue):
         record_class = record_type.record_class
-        return f"{self.gen.name_for_record_class(record_class)}({varvalue} as DataMap)"
+        return f"{record_class.__fqn__}({varvalue} as DataMap)"
 
     @case("union_type")
-    def valueOfUnionType(self, thetype : types.UnionType, varvalue):
+    def callForUnionType(self, thetype : types.UnionType, varvalue):
         set_trace()
 
     @case("sum_type")
-    def valueOfSumType(self, thetype : types.SumType, varvalue):
+    def callForSumType(self, thetype : types.SumType, varvalue):
         set_trace()
 
     @case("type_var")
-    def valueOfTypeVar(self, thetype : types.TypeVar, varvalue):
+    def callForTypeVar(self, thetype : types.TypeVar, varvalue):
         set_trace()
 
     @case("type_ref")
-    def valueOfTypeRef(self, thetype : types.TypeRef, varvalue):
+    def callForTypeRef(self, thetype : types.TypeRef, varvalue):
         set_trace()
 
     @case("type_app")
-    def valueOfTypeApp(self, type_app : types.TypeApp, varvalue):
+    def callForTypeApp(self, type_app : types.TypeApp, varvalue):
         # TODO - need to make this passable too
         # if logical_type == list: return "[Any]"
         # if logical_type == dict: return "[String : Any]"
@@ -403,20 +357,20 @@ class ConverterCall(CaseMatcher):
             raise Exception("Type application for non-opaque types not yet supported")
         else:
             opaque_type = origin_type.opaque_type
-            if opaque_type.native_type == list:
+            if opaque_type.name == "List":
                 childtype = type_app.type_args[0]
                 return f"""({varvalue} as List<Any>).map {{
                     {gen.converter_call(childtype, "it")}
                 }}
                 """
-            if opaque_type.native_type == dict:
+            if opaque_type.name == "Map":
                 key_type = type_app.type_args[0]
                 val_type = type_app.type_args[1]
-                return f"Map<{gen.kotlintype_for(key_type)}, {gen.kotlintype_for(val_type)}>"
+                return f"Map<{gen.kotlin_sig_for(key_type)}, {gen.kotlin_sig_for(val_type)}>"
             if opaque_type.name == "Optional":
                 optional_of = type_app.type_args[0]
                 return gen.converter_call(optional_of, varvalue)
-            if opaque_type.name == "key":
+            if opaque_type.name == "Ref":
                 reftype = type_app.type_args[0]
                 if reftype.is_record_type:
                     record_class = reftype.record_class
@@ -425,6 +379,6 @@ class ConverterCall(CaseMatcher):
                 else:
                     set_trace()
                     assert False
-                return f"refFromAny<{gen.name_for_record_class(record_class)}>({varvalue}!!)"
+                return f"refFromAny<{record_class.__fqn__}>({varvalue}!!)"
         set_trace()
         raise Exception("Invalid type: {type_app}")

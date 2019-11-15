@@ -1,7 +1,7 @@
 
-class {{class_name}} : AbstractEntity {
+class {{record_class.__name__}} : AbstractEntity {
 {%- for name, field in record_class.__record_fields__.items() %}
-    var {{name}} : {{ gen.kotlintype_for(field.logical_type) }} 
+    var {{name}} : {{ gen.kotlin_sig_for(field.logical_type) }} 
         {#
         {%- if gen.is_optional_type(field.logical_type) %} =
         {{- gen.default_value_for(field.logical_type) }}

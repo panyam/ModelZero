@@ -6,19 +6,20 @@ from ipdb import set_trace
 from modelzero.core.resources import BaseResource
 from modelzero.utils import get_param 
 from modelzero.core import types
+from modelzero.core.custom_types import *
 
 def ensure_type(t):
     if t is str:
-        return types.StrType
+        return MZTypes.String
     if t is int:
-        return types.IntType
+        return MZTypes.Int
     if t is bool:
-        return types.BoolType
+        return MZTypes.Bool
     if type(t) is typing._GenericAlias:
         if t.__origin__ == list:
-            return types.ListType[ensure_type(t.__args__[0])]
+            return MZTypes.List[ensure_type(t.__args__[0])]
         if t.__origin__ == dict:
-            return types.MapType[ensure_type(t.__args__[0]), ensure_type(t.__args__[1])]
+            return MZTypes.Map[ensure_type(t.__args__[0]), ensure_type(t.__args__[1])]
         set_trace()
     try:
         return types.ensure_type(t)

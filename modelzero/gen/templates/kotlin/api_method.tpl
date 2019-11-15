@@ -1,10 +1,10 @@
 
 fun {{ method.name }}({%- for name, param in method.kwargs.items() -%}
     {%- if loop.index0 > 0 %}, {% endif %}
-    {{ name }}: {{gen.kotlintype_for(method.param_types[name])}}
+    {{ name }}: {{gen.kotlin_sig_for(param_types[name])}}
 {%- endfor %}) :
-    {%- if method.return_type -%}
-        Promise<{{ gen.kotlintype_for(method.return_type) }}, Exception>
+    {%- if return_type -%}
+        Promise<{{ gen.kotlin_sig_for(return_type) }}, Exception>
     {%- else -%}
         Promise<Int, Exception>
     {%- endif -%} {
@@ -24,12 +24,12 @@ fun {{ method.name }}({%- for name, param in method.kwargs.items() -%}
     {% endwith -%}
     var request = httpClient.buildRequest("{{ http_method }}", "{{ path_prefix }}", queryParams, requestBody)
     return httpClient.sendRequest(request) bind {
-        {%- if gen.is_list_type(method.return_type ) %}
+        {%- if gen.is_list_type(return_type ) %}
             var out = it.jsonArray!!.stream<JSONObject>.map {
-                {{ gen.converter_call(method.return_type.child_type, "it") }}
+                {{ gen.converter_call(return_type.child_type, "it") }}
             }.collect(Collectors.toList())
         {% else %}
-            var out = {{ gen.converter_call(method.return_type, "it") }}
+            var out = {{ gen.converter_call(return_type, "it") }}
         {%- endif %}
         Promise.of(out)
     }

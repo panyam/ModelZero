@@ -7,11 +7,6 @@ from modelzero.utils import with_metaclass
 class Field(object):
     USE_DEFAULT = None
     def __init__(self, base_type = None, **kwargs):
-        if base_type:
-            from modelzero.core import types
-            if type(base_type) is not types.Type:
-                set_trace()
-        self.base_type = base_type
         self.field_name = kwargs.get("field_name", None)
         self.checker_name = kwargs.get("checker_name",
                                         None if not self.field_name
@@ -19,6 +14,28 @@ class Field(object):
         self.default_value = kwargs.get("default", None)
         self.validators = kwargs.get("validators", [])
         self.optional = kwargs.get("optional", False)
+        self.base_type = base_type
+
+    @property
+    def base_type(self):
+        return self._base_type
+
+    @base_type.setter
+    def base_type(self, newtype):
+        if newtype:
+            from modelzero.core import types
+            if type(newtype) is not types.Type:
+                set_trace()
+        self._base_type = newtype
+
+    def clone(self):
+        kwargs = { }
+        if self.field_name: kwargs["field_name"] = self.field_name
+        if self.checker_name: kwargs["checker_name"] = self.checker_name
+        if self.default_value: kwargs["default_value"] = self.default_value
+        if self.validators: kwargs["validators"] = self.validators
+        if self.optional: kwargs["optional"] = self.optional
+        return Field(self.base_type, **kwargs)
 
     def __get__(self, instance, objtype = None):
         if instance is None:
