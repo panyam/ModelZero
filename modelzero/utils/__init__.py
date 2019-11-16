@@ -10,6 +10,10 @@ from werkzeug.routing import BaseConverter
 DEFAULT_DATE_FORMAT = "%Y-%m-%d"
 DEFAULT_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
+def camelCase(snake_str):
+    first, *others = snake_str.split('_')
+    return ''.join([first.lower(), *map(str.title, others)])
+
 def with_metaclass(meta, base=object, BaseName = "NewBase"):
     return meta(BaseName, (base,), {})
 

@@ -8,7 +8,7 @@ from modelzero.core import custom_fields as fields
 from modelzero.core import types
 from modelzero.core.records import Record, RecordBase
 from modelzero.core.entities import Entity
-from modelzero.utils import resolve_fqn
+from modelzero.utils import resolve_fqn, camelCase
 import modelzero.apigen.apispec
 from ipdb import set_trace
 
@@ -127,6 +127,7 @@ class GeneratorBase(object):
         templateLoader = jinja2.FileSystemLoader(searchpath=location)
         templateEnv = jinja2.Environment(loader=templateLoader)
         templateEnv.undefined = StrictUndefined
+        templateEnv.globals['camelCase'] = camelCase
         TEMPLATE_FILE = f"{tpl_name}.tpl"
         return templateEnv.get_template(TEMPLATE_FILE)
 
