@@ -147,6 +147,9 @@ class KotlinTypeFor(CaseMatcher):
         if thetype.name == "key":
             t,nc = gen.ensure_kotlin_type("Ref")
             if nc: t.opaque_type = types.OpaqueType("Ref")
+        if thetype.name == "Optional":
+            t,nc = gen.ensure_kotlin_type("Optional")
+            if nc: t.opaque_type = types.OpaqueType("Optional")
         if t is None:
             set_trace()
             raise Exception(f"Invalid opaque type encountered: {thetype.name}")

@@ -20,6 +20,10 @@ def ensure_type(t):
             return MZTypes.List[ensure_type(t.__args__[0])]
         if t.__origin__ == dict:
             return MZTypes.Map[ensure_type(t.__args__[0]), ensure_type(t.__args__[1])]
+        if t.__origin__ == typing.Union:
+            if len(t.__args__) == 2 and type(None) in t.__args__:
+                optional_of = t.__args__[0] or t.__args__[1]
+                return MZTypes.Optional[ensure_type(optional_of)]
         set_trace()
     try:
         return types.ensure_type(t)
