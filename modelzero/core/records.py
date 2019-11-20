@@ -1,8 +1,10 @@
 
+from collections import defaultdict
 from taggedunion import Union, Variant
 from ipdb import set_trace
 import typing
 from modelzero.utils import with_metaclass
+from modelzero.core import errors
 
 class Field(object):
     USE_DEFAULT = None
@@ -11,7 +13,7 @@ class Field(object):
         self.checker_name = kwargs.get("checker_name",
                                         None if not self.field_name
                                              else "has_" + self.field_name)
-        self.default_value = kwargs.get("default", None)
+        self._default = kwargs.get("default", None)
         self.validators = kwargs.get("validators", [])
         self.optional = kwargs.get("optional", False)
         self.base_type = base_type
@@ -28,11 +30,17 @@ class Field(object):
                 set_trace()
         self._base_type = newtype
 
+    @property
+    def default_value(self):
+        if self._default is None: return None
+        if hasattr(self._default, "__call__"): return self._default()
+        return self._default
+
     def clone(self):
         kwargs = { }
         if self.field_name: kwargs["field_name"] = self.field_name
         if self.checker_name: kwargs["checker_name"] = self.checker_name
-        if self.default_value: kwargs["default_value"] = self.default_value
+        if self._default : kwargs["default"] = self._default
         if self.validators: kwargs["validators"] = self.validators
         if self.optional: kwargs["optional"] = self.optional
         return Field(self.base_type, **kwargs)
@@ -120,7 +128,6 @@ class RecordBase(object):
 
     def __getitem__(self, fieldname):
         if fieldname not in self.__record_fields__:
-            set_trace()
             raise Exception(f"Invalid field name: {fieldname}")
         return getattr(self, fieldname)
 
@@ -130,6 +137,7 @@ class RecordBase(object):
     def setfield(self, fieldname, value, reject_invalid_field = False):
         if fieldname not in self.__record_fields__:
             if reject_invalid_field: 
+                set_trace()
                 raise Exception(f"Invalid field name: '{fieldname}'")
         else:
             setattr(self, fieldname, value)
@@ -138,6 +146,23 @@ class RecordBase(object):
     def apply_patch(self, patch, reject_invalid_fields = False):
         for fieldname, value in patch.items():
             self.setfield(fieldname, value, reject_invalid_fields)
+        return self
+
+    def validate(self):
+        field_errors = defaultdict(list)
+        for name, field in self.__record_fields__.items():
+            ftype = field.logical_type
+            fvalue = self.__field_values__.get(name, field.default_value)
+            # TODO - should optional and nullable be treated differently?
+            if fvalue is None:
+                if not field.optional:
+                    field_errors[name].append(errors.ValidationError(f"Required field {name} has no value"))
+                    continue
+            # Validate value
+            field.validate(fvalue)
+        if field_errors:
+            set_trace()
+            raise errors.ValidationError(f"Validation failed for {self.__class__}", field_errors)
         return self
 
 class RecordMeta(type):

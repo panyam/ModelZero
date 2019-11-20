@@ -2,7 +2,11 @@
 class {{record_class.__name__}}(data: MutableDataMap = mutableMapOf()) : AbstractEntity(data) {
 {%- for name, field in record_class.__record_fields__.items() %}
     var {{camelCase(name)}} : {{ gen.kotlin_sig_for(field.logical_type) }} 
+        {% if field.optional -%}
+        get() = get("{{name}}", false)
+        {% else -%}
         get() = get("{{name}}")!!
+        {% endif -%}
         set(value) {
             set("{{name}}", value)
         }
