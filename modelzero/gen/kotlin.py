@@ -31,13 +31,13 @@ class Generator(gencore.GeneratorBase):
         assert type(logical_type) is types.Type
         return DefaultValue().valueOf(logical_type)
 
-    def converter_call(self, logical_type : types.Type, varvalue):
+    def any_to_typed(self, logical_type : types.Type, varvalue):
         if self.is_record_class(logical_type):
             logical_type = types.Type.as_record_type(logical_type)
         if type(logical_type) is not types.Type:
             set_trace()
-        return ConverterCall(self)(logical_type, varvalue)
-        
+        return AnyToTyped(self)(logical_type, varvalue)
+
     def kotlin_type_for(self, logical_type):
         """ Returns the transformed kotlin type for a given logical type. """
         return KotlinTypeFor(self)(logical_type)
@@ -300,7 +300,7 @@ class DefaultValue(CaseMatcher):
             set_trace()
         assert False, f"Invalid logical_type found: {logical_type}"
 
-class ConverterCall(CaseMatcher):
+class AnyToTyped(CaseMatcher):
     __caseon__ = types.Type
     def __init__(self, gen):
         self.gen = gen
@@ -349,7 +349,7 @@ class ConverterCall(CaseMatcher):
             if opaque_type.name == "List":
                 childtype = type_app.type_args[0]
                 return f"""{varvalue}.map {{
-                    {gen.converter_call(childtype, "it")}
+                    {gen.any_to_typed(childtype, "it")}
                 }}.collect(Collectors.toList())"""
             if opaque_type.name == "Map":
                 key_type = type_app.type_args[0]
@@ -357,7 +357,7 @@ class ConverterCall(CaseMatcher):
                 return f"Map<{gen.kotlin_sig_for(key_type)}, {gen.kotlin_sig_for(val_type)}>"
             if opaque_type.name == "Optional":
                 optional_of = type_app.type_args[0]
-                return gen.converter_call(optional_of, varvalue)
+                return gen.any_to_typed(optional_of, varvalue)
             if opaque_type.name == "Ref":
                 reftype = type_app.type_args[0]
                 if reftype.is_record_type:
@@ -370,3 +370,4 @@ class ConverterCall(CaseMatcher):
                 return f"refFromAny<{record_class.__fqn__}>({varvalue}!!)"
         set_trace()
         raise Exception("Invalid type: {type_app}")
+

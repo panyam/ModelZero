@@ -29,7 +29,7 @@ fun {{ method.name }}({%- for name, param in method.kwargs.items() -%}
         {% else %}
             val results = it.jsonObject!!
         {%- endif %}
-        var out = {{ gen.converter_call(return_type, "results") }}
+        var out = {{ gen.any_to_typed(return_type, "results") }}
         Promise.of(out)
     }
 }
