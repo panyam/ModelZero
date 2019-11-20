@@ -31,7 +31,7 @@ class GeneratorBase(object):
         return logical_type in (bool, int, float, bytes, str, datetime.datetime, fields.URL, typing.Any) or self.is_key_type(logical_type)
 
     def is_list_type(self, logical_type):
-        return logical_type.is_opaque_type and logical_type.native_type == list
+        return logical_type.is_type_app and logical_type.origin_type.is_opaque_type and logical_type.origin_type.name == "List"
 
     def is_key_type(self, logical_type):
         return fields.KeyType in logical_type.mro()

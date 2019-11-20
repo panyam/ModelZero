@@ -57,9 +57,9 @@ class Field(object):
         instance.__field_values__[self.field_name] = value
 
     def validate(self, value):
-        if self.base_type:
-            if not isinstance(value, self.base_type):
-                value = self.base_type(value)
+        if self.base_type and self.base_type.is_opaque_type and self.base_type.native_type:
+            if not isinstance(value, self.base_type.native_type):
+                value = self.base_type.native_type(value)
         for validator in self.validators:
             value = validator(value)
         return value

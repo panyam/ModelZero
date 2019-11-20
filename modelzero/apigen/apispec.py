@@ -207,7 +207,7 @@ class Method(object):
 
 def api_to_flask_ns(api, world):
     from flask_restplus import namespace
-    ns = namespace.Namespace(api.name, description=api.description,
+    ns = namespace.Namespace(api.name.lower(), description=api.description,
                              url_prefix = api.url_prefix)
     router_to_flask_ns(api.router, ns, world)
     return ns

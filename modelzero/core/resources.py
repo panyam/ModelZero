@@ -55,7 +55,7 @@ class BaseResource(Resource):
 
     @property
     def request_member(self):
-        if self._request_member is None and self.request_channel.memberkey:
+        if self._request_member is None and self.request_channel and self.request_channel.memberkey:
             self._request_member = self.world.Members.table.get_by_key(self.request_channel.memberkey)
         return self._request_member
 

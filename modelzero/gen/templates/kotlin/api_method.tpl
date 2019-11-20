@@ -25,12 +25,11 @@ fun {{ method.name }}({%- for name, param in method.kwargs.items() -%}
     var request = httpClient.buildRequest("{{ http_method }}", "{{ path_prefix }}", queryParams, requestBody)
     return httpClient.sendRequest(request) bind {
         {%- if gen.is_list_type(return_type ) %}
-            var out = it.jsonArray!!.stream<JSONObject>.map {
-                {{ gen.converter_call(return_type.child_type, "it") }}
-            }.collect(Collectors.toList())
+            val results = (it.jsonArray!!).stream<JSONObject>()
         {% else %}
-            var out = {{ gen.converter_call(return_type, "it") }}
+            val results = it.jsonObject!!
         {%- endif %}
+        var out = {{ gen.converter_call(return_type, "results") }}
         Promise.of(out)
     }
 }

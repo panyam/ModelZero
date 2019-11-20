@@ -64,6 +64,7 @@ class Query(Generic[T]):
         return self._offset
 
     def set_offset(self, pos = 0) -> "Query":
+        self._offset = int(pos)
         return self
 
     @property
@@ -71,7 +72,7 @@ class Query(Generic[T]):
         return self._limit
 
     def set_limit(self, count = 100) -> "Query":
-        self._limit = count
+        self._limit = int(count)
         return self
 
     @property

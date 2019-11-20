@@ -1,5 +1,5 @@
 
-class {{record_class.__name__}}(data: DataMap = emptyMap()) : AbstractEntity(data) {
+class {{record_class.__name__}}(data: MutableDataMap = mutableMapOf()) : AbstractEntity(data) {
 {%- for name, field in record_class.__record_fields__.items() %}
     var {{camelCase(name)}} : {{ gen.kotlin_sig_for(field.logical_type) }} 
         get() = get("{{name}}")!!
@@ -7,6 +7,7 @@ class {{record_class.__name__}}(data: DataMap = emptyMap()) : AbstractEntity(dat
             set("{{name}}", value)
         }
 {%- endfor %}
+    constructor(_data : JSONObject) : this(JSONObjectMap(_data))
 
     override fun toMap() : Map<String, Any?> {
         return mapOf(

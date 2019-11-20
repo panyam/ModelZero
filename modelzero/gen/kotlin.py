@@ -31,21 +31,6 @@ class Generator(gencore.GeneratorBase):
         assert type(logical_type) is types.Type
         return DefaultValue().valueOf(logical_type)
 
-    def code_for_member_extraction(self, mapname, fieldname, fieldtype):
-        out = []
-        optional_of = self.optional_type_of(fieldtype)
-        varvalue = f"""{mapname}["{fieldname}"]"""
-        if optional_of:
-            # Add code to check field exists
-            out.append(f"""if ({mapname}.containsKey("{fieldname}")) """)
-            out.append(f"""    {fieldname} = { self.converter_call(fieldtype, varvalue) }""")
-        else:
-            out.append(f"""if (!{mapname}.containsKey("{fieldname}")) """)
-            out.append(f"""    throw IllegalArgumentException("Expected field '{fieldname}'")""")
-            out.append(f"""{fieldname} = { self.converter_call(fieldtype, varvalue) }""")
-
-        return "\n".join(out)
-
     def converter_call(self, logical_type : types.Type, varvalue):
         if self.is_record_class(logical_type):
             logical_type = types.Type.as_record_type(logical_type)
@@ -70,7 +55,7 @@ class Generator(gencore.GeneratorBase):
         return self.load_template("kotlin/record_class").render(gen = self,
                     record_class = record_class.record_type.record_class)
 
-    def kotlinclient_for(self, router, class_name):
+    def kotlinclient_for(self, router, class_name, url_prefix):
         """ Generate the client with method per call in the API router. """
         # See if class_name is taken by another model
         from collections import deque
@@ -81,7 +66,7 @@ class Generator(gencore.GeneratorBase):
 
             for prefix,child in r.children:
                 visit(child, path + prefix)
-        visit(router, "/")
+        visit(router, url_prefix)
         out.append("}")
         return "\n".join(out)
 
@@ -331,7 +316,7 @@ class ConverterCall(CaseMatcher):
     @case("record_type")
     def callForRecordType(self, record_type : types.RecordType, varvalue):
         record_class = record_type.record_class
-        return f"{record_class.__fqn__}({varvalue} as DataMap)"
+        return f"{record_class.__fqn__}({varvalue})"
 
     @case("union_type")
     def callForUnionType(self, thetype : types.UnionType, varvalue):
@@ -357,15 +342,15 @@ class ConverterCall(CaseMatcher):
         gen = self.gen
         origin_type = type_app.origin_type
         if not origin_type.is_opaque_type:
+            set_trace()
             raise Exception("Type application for non-opaque types not yet supported")
         else:
             opaque_type = origin_type.opaque_type
             if opaque_type.name == "List":
                 childtype = type_app.type_args[0]
-                return f"""({varvalue} as List<Any>).map {{
+                return f"""{varvalue}.map {{
                     {gen.converter_call(childtype, "it")}
-                }}
-                """
+                }}.collect(Collectors.toList())"""
             if opaque_type.name == "Map":
                 key_type = type_app.type_args[0]
                 val_type = type_app.type_args[1]

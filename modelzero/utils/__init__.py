@@ -24,6 +24,11 @@ def getLogger(name, level = logging.INFO):
 
 def error_json(value): return {'message': value}
 
+class ModelEncoder(json.JSONEncoder):
+    def default(self, obj):
+        # Let the base class default method raise the TypeError
+        return json.JSONEncoder.default(self, obj)
+
 class NEJsonEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime.datetime):
@@ -35,6 +40,15 @@ class NEJsonEncoder(json.JSONEncoder):
             return obj.to_json()
         elif isinstance(obj, bytes):
             return obj.decode()
+        else:
+            from modelzero.core.entities import Key
+            from modelzero.core.records import RecordBase
+            if type(obj) is Key:
+                if type(obj.parts) is list and len(obj.parts) == 1:
+                    return obj.parts[0]
+                return obj.parts
+            elif isinstance(obj, RecordBase):
+                return obj.__field_values__
         return super(NEJsonEncoder, self).default(obj)
 
 def nonempty(s):
