@@ -51,7 +51,9 @@ class Key(object):
         kf = self.entity_class.key_fields()
         self.parts = []
         if not kf:
-            assert len(parts) == 1
+            if len(parts) != 1:
+                set_trace()
+                assert False
             self.parts = parts
         else:
             if len(parts) != len(kf):

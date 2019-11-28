@@ -12,7 +12,7 @@ import json, phonenumbers
 log = getLogger(__name__)
 
 class AuthEngine(engine.Engine):
-    ModelClass = Channel
+    RecordClass = Channel
     def __init__(self, datastore, memberengine, dev_mode = None):
         super().__init__(datastore, dev_mode)
         self.memberengine = memberengine

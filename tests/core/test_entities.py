@@ -1,19 +1,17 @@
 
 from ipdb import set_trace
-from modelzero.core import fields, entities
+from modelzero.core import entities
+from modelzero.core import custom_fields as fields
+from modelzero.core import custom_types as types
 
 def test_entity_create(mocker):
     class E(entities.Entity):
-        f1 = fields.StringField()
-        f2 = fields.IntegerField()
-        f3 = fields.FloatField()
-        f4 = fields.BooleanField()
+        f1 = fields.Field(types.MZTypes.String)
+        f2 = fields.Field(types.MZTypes.Int)
+        f3 = fields.Field(types.MZTypes.Float)
+        f4 = fields.Field(types.MZTypes.Bool)
 
-    assert len(E.__model_fields__) == 4
-    assert hasattr(E, "has_f1")
-    assert hasattr(E, "has_f2")
-    assert hasattr(E, "has_f3")
-    assert hasattr(E, "has_f4")
+    assert len(E.__record_fields__) == 4
 
     e = E(f1 = 0, f2 = 3, f3 = "5.5", f4 = True)
     assert e.f1 == "0"
@@ -27,10 +25,10 @@ def test_entity_create(mocker):
 
 def test_entity_keyfields(mocker):
     class E2(entities.Entity):
-        f1 = fields.StringField()
-        f2 = fields.IntegerField()
-        f3 = fields.FloatField()
-        f4 = fields.BooleanField()
+        f1 = fields.Field(types.MZTypes.String)
+        f2 = fields.Field(types.MZTypes.Int)
+        f3 = fields.Field(types.MZTypes.Float)
+        f4 = fields.Field(types.MZTypes.Bool)
 
         @classmethod
         def key_fields(cls):

@@ -73,7 +73,7 @@ class Generator(gencore.GeneratorBase):
     def func_for_router_method(self, http_method, method, prefix):
         path_prefix = prefix
         for name, param in method.patharg_params.items():
-            path_prefix = path_prefix.replace(f"{{{name}}}", f"${name}")
+            path_prefix = path_prefix.replace(f"<{name}>", f"${{{name}}}")
 
         return_type = self.kotlin_type_for(method.return_type)
         param_types = {n: self.kotlin_type_for(pt) for n,pt in method.param_types.items()}

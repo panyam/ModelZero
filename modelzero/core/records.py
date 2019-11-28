@@ -26,6 +26,7 @@ class Field(object):
     def base_type(self, newtype):
         if newtype:
             from modelzero.core import types
+            newtype = types.ensure_type(newtype)
             if type(newtype) is not types.Type:
                 set_trace()
         self._base_type = newtype

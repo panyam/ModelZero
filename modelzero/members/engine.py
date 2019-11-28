@@ -9,7 +9,7 @@ from modelzero.common.engine import EngineMethod
 from modelzero.members.entities import Member, KEY_FIELD
 
 class Engine(engine.Engine):
-    ModelClass = Member
+    RecordClass = Member
 
     @EngineMethod.ValidateParam("member", EnsureMissing(KEY_FIELD))
     @EngineMethod.ValidateParam("member", IgnoreFields("created_at"))

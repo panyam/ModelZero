@@ -1,13 +1,13 @@
 
 from ipdb import set_trace
-from modelzero.core import fields
+from modelzero.core import records
 
 def test_field_invalid_get(mocker):
-    f = fields.Field()
+    f = records.Field()
     assert f.__get__(None) == f
 
 def test_field_invalid_set(mocker):
-    f = fields.Field()
+    f = records.Field()
     try:
         f.__set__(None, "value")
         assert False, "Should have asserted on setter with invalid field_name"
@@ -22,7 +22,7 @@ def test_field_invalid_set(mocker):
         assert ae.args[0] == "Instance needed for setter"
 
 def test_field_invalid_delete(mocker):
-    f = fields.Field()
+    f = records.Field()
     try:
         f.__delete__(None)
         assert False, "Should have asserted on deleter with invalid field_name"
@@ -39,7 +39,7 @@ def test_field_invalid_delete(mocker):
 def test_field_set_validate_called(mocker):
     class O:
         __field_values__ = {}
-        hello = fields.Field(field_name = "hello")
+        hello = records.Field(field_name = "hello")
     instance = O()
     mocker.spy(O.hello, "validate")
     instance.hello = "value"

@@ -1,7 +1,7 @@
 
-from . import errors
+from modelzero.core import errors
+from modelzero.core.entities import Key
 from typing import TypeVar, Generic, List, Mapping, Type, Any
-from .entities import Key
 
 T = TypeVar("T")
 
@@ -123,7 +123,7 @@ class Table(Generic[T]):
     # GET methods
     def batch_get(self, keys : List[Key]) -> Mapping[Key, T]:
         """ Batch fetch a set of entities given their Keys. """
-        return [self.get_by_key(key) for key in keys]
+        return {key: self.get_by_key(key) for key in keys}
 
     def get_by_key(self, key : Key, nothrow = False) -> T:
         assert False, "Not implemented"

@@ -1,41 +1,303 @@
 
-One of the challenges is that by default a form will return a form field for every field in the model it refers to.  Even for "pure CRUD" methods this may be over restrictive.  For example in entities with following fields:
+One risk is we may be doing two different things
+Describe both the "target" schema as well as the rules to convert
+one to another.  There are a couple of issues here:
+If we provide a derivation to go from A -> B
+Should there be one to go from B -> A?
+What if it were A,B,C -> D?
+A good example is a record that is a hierarchical datamap to a flattened
+representation.  This is a 1:1 mapping.
 
-    created_at
-    updated_at
-    __key__
+The mappings while reversible may not be "complete".  For example
+a projection to extract a subset of fields cannot be reversed
+to recover "rejected" fields.  In such cases it may not make sense
+auto generate the mapping rules.
 
-__key__ is create_only (ie can only be specified at creation if at all)
-created_at is readonly and is auto generated)
+A derivation should really be source types + dest types + mapping rules.
 
-We dont want ot show the created_at field on creates or updates (but ok for GET)
+SQL is a data-access dsl.  It thankfully results in a "target type" but 
+realy is about data-access and computation.
+Same with GraphQL.  It lets us specify "fetching" from N sources 
+into a new type.  The mechanics of the fetch is done by the engine.
 
-What is a good model for turning on/off fields to be shown?  Note that Forms are view models essentially because when the data goes from say a JSON request, the engine already applies validations that were specified in the service method annotations.   
+Where the two differ is SQL gets form N sources and returns flattened data
+GraphQL expands out fields
 
-This means our form would need awareness of the engine method in whose context this is being called.
+But isnt this what derivation gives us?
 
-But an engine method is just a "view" into the system - whether it is a read or a write.
+eg 
 
-So can we represent an Engine method as a view model or a form eg:
+derive (a : X, b : Y, c : Z, d : List[D]) {
+    a       // creates top level field "a" which is a copy of a
+    b.y     // top level field called y - same as b.y
+    b {
+        y   // creates top level field b and a nested field y that is b.y
+        c/x // creates "b.x which is a copy of c.x
+    }
+    c {
+        a   // Should this refer to top level "a" or "c.a" ?
+            // To disambiguate, use:
+            // $ . a
+            // But internally we would store "full" field paths so 
+            // this ambiguity would not arise
+    }
+    d : {
+    }
+}
 
-class EngineViewModel(ViewModel):
-    Engine = ...
-    Method = ...
-    def __init__(self):
-        pass
 
-class SchoolCreateEngineViewModel(EngineViewModel):
-    Engine = SchoolEngine
-    Method = "create"
+GraphQL Samples:
 
-this should result in the following model:
+```
+{
+  me {
+    id
+    firstName
+    lastName
+    birthday {
+      month
+      day
+    }
+    friends {
+      name
+    }
+  }
+}
+```
+
+Returns:
+
+```
+d = Derivation(me : User, friends : List[User]) {
+    select("me", Derivation(User) {
+        select("id")
+        select("firstName")
+        select("lastName")
+        select(birthday, Derivation(Date) {
+            include("month")
+            include("day")
+        })
+    }
+    select("friends", FMap[Derivation(User) {
+        select("name")
+    }]
+}
+
+```
+
+Sample:
+
+```
+{
+  user(id: 4) {
+    name
+  }
+}
+```
+
+Returns:
+
+```
+d = Derivation(User) { select("name") }
+d(user_engine.get(4)) # Returns an object of type d.logical_type
+```
 
 
-SchoolCreateViewModel:
-    member : Member
-    viewer : Key<Member>
-    __suppressions__ = [
-        "member/__key__",
-        "member/created_at",
-        "member/updated_at"
-    ]
+Sample:
+
+```
+{
+  user(id: 4) {
+    id
+    name
+    profilePic(size: 100)
+  }
+}
+```
+
+Returns:
+
+```
+d = Derivation(User) {
+    "id": Select(),
+    "name": Select(),
+    "profilePic: Eval("profile_pic_getter", id = id, size = 100)
+}
+d(user_engine.get(4))
+
+or
+
+Derivation() {
+    eval("user", ("get_user", id = 4), Derivation(User) {
+        "id": Select(),
+        "name": Select(),
+        "profilePic: Eval("profile_pic_getter", id = id, size = 100)
+    })
+}
+```
+
+Sample without fragments:
+
+```
+query noFragments {
+  user(id: 4) {
+    friends(first: 10) {
+      id
+      name
+      profilePic(size: 50)
+    }
+    mutualFriends(first: 10) {
+      id
+      name
+      profilePic(size: 50)
+    }
+  }
+}
+```
+
+Returns:
+
+```
+Derivation() {
+    "user": Eval("get_user", id = 4).FMap(Derivation(User) {
+        "friends": Eval("get_friends", id = 4, first = 10).FMap(Derivation(Friend) {
+            "id": Select(),
+            "name": Select(),
+            "profilePic": Eval("profile_pic_getter", id = "$user.id", size = 50)
+        })
+        "mutualFriends": Eval("get_mutual_friends", id = 4, first = 10).FMap(Derivation(Friend) {
+            "id": Select(),
+            "name": Select(),
+            "profilePic": Eval("profile_pic_getter", id = "$user.id", size = 50)
+        })
+    }
+}
+```
+
+
+Sample with fragments:
+
+```
+query withFragments {
+  user(id: 4) {
+    friends(first: 10) {
+      ...friendFields
+    }
+    mutualFriends(first: 10) {
+      ...friendFields
+    }
+  }
+}
+
+fragment friendFields on User {
+  id
+  name
+  profilePic(size: 50)
+}
+```
+
+Should Return:
+
+```
+FriendFields = Derivation(User) {
+    "id": Select(),
+    "name": Select(),
+    "profilePic": Eval("profile_pic", size = 50)
+}
+
+return Derivation() {
+    "user": Eval("get_user", id = 4).Apply(Derivation(User) {
+        "friends": Eval("get_friends", id = 4, first = 10).FMap(FriendFields)
+        "mutualFriends": Eval("get_mutual_friends", id = 4, first = 10).FMap(FriendFields)
+    })
+}
+```
+
+Sample with multilevel fragments:
+
+```
+query withNestedFragments {
+  user(id: 4) {
+    friends(first: 10) {
+      ...friendFields
+    }
+    mutualFriends(first: 10) {
+      ...friendFields
+    }
+  }
+}
+
+fragment friendFields on User {
+  id
+  name
+  ...standardProfilePic
+}
+
+fragment standardProfilePic on User {
+  profilePic(size: 50)
+}
+```
+
+Returns:
+
+```
+StandardProfilePic = Derivation(User) {
+    Eval("profilePic", "profile_pic", id = id, size = 50)
+}
+
+FriendFields = Derivation(User, [
+    Select("id"),
+    Include(StandardProfilePic, 0   /* 0 refers to which argument the fragment is being applied on */)
+    Select("name"),
+    Eval("profilePic", "profile_pic", id = id, size = 50)
+]
+d = Derivation() {
+    "user": Eval("get_user", id = 4).Apply(Derivation(User) {
+        "friend": Eval("get_friends", id = 4, first = 10).FMap(FriendFields)
+    })
+}
+```
+
+Sample with fragment typing:
+
+```
+query FragmentTyping {
+  profiles(handles: ["zuck", "cocacola"]) {
+    handle
+    ...userFragment
+    ...pageFragment
+  }
+}
+
+fragment userFragment on User {
+  friends {
+    count
+  }
+}
+
+fragment pageFragment on Page {
+  likers {
+    count
+  }
+}
+```
+
+# Do we need Unions here?
+
+```
+UserFragment = Derivation(User) {
+    Eval("friends", "get_friends").FMap(Derivation(User) { Select("count") })
+}
+
+PageFragment = Derivation(User) {
+    Eval("likers", "get_likers").FMap(Derivation(Page) { Select("count") })
+}
+
+return Derivation() {
+    Eval("profiles", "get_profiles", handles = ["zuck", "cocacola"]).FMap(Derivation(Profile) {
+        Select("handle")
+        Include("UserFragment", 0)
+        Include("PageFragment", 0)  // how to do type checks?
+    })
+}
+```

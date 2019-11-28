@@ -28,7 +28,6 @@ def ensure_type(t):
     try:
         return types.ensure_type(t)
     except Exception as exc:
-        set_trace()
         raise exc
 
 class API(object):
@@ -118,6 +117,8 @@ class Method(object):
     @property
     def return_type(self):
         if not self._return_type:
+            if self.method_sig.return_annotation is inspect._empty:
+                return None
             self._return_type = ensure_type(self.method_sig.return_annotation)
         if self._return_type is inspect._empty:
             return None
@@ -245,7 +246,7 @@ class PathArg(object):
         self.key = key
 
     def __call__(self, req, *args, **kwargs):
-        return kwargs[key]
+        return kwargs[self.key]
 
 class FieldPath(object):
     def __init__(self, fp = None):

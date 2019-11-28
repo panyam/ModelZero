@@ -28,24 +28,30 @@ class GeneratorBase(object):
         return result
 
     def is_leaf_type(self, logical_type):
+        if not logical_type: return False
         return logical_type in (bool, int, float, bytes, str, datetime.datetime, fields.URL, typing.Any) or self.is_key_type(logical_type)
 
     def is_list_type(self, logical_type):
+        if not logical_type: return False
         return logical_type.is_type_app and logical_type.origin_type.is_opaque_type and logical_type.origin_type.name == "List"
 
     def is_key_type(self, logical_type):
+        if not logical_type: return False
         return fields.KeyType in logical_type.mro()
 
     def is_dict_type(self, logical_type):
+        if not logical_type: return False
         return dict in logical_type.mro()
 
     def is_patch_record_class(self, logical_type):
+        if not logical_type: return False
         try:
             return issubclass(logical_type, PatchRecordBase)
         except Exception as exc:
             return False
 
     def is_record_class(self, logical_type):
+        if not logical_type: return False
         try:
             return issubclass(logical_type, RecordBase) and not self.is_patch_record_class(logical_type)
         except Exception as exc:
@@ -64,10 +70,12 @@ class GeneratorBase(object):
         return args[0] or args[1]
 
     def is_union_type(self, logical_type):
+        if not logical_type: return False
         orig = getattr(logical_type, "__origin__", None)
         return orig is typing.Union
 
     def is_patch_type(self, logical_type):
+        if not logical_type: return False
         orig = getattr(logical_type, "__origin__", None)
         return orig is modelzero.core.models.Patch
 
