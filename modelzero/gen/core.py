@@ -94,7 +94,7 @@ class GeneratorBase(object):
         """
         patch_record_class, newcreated = self.ensure_patch_model(record_class)
         if newcreated:
-            for name,field in record_class.__record_fields__.items():
+            for name,field in record_class.__record_metadata__.items():
                 logical_type = field.logical_type
                 newfield = None
                 if self.is_leaf_type(logical_type):

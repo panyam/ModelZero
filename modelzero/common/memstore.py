@@ -82,7 +82,7 @@ class MemTable(Table[T]):
         def row_filter(result):
             for f in filters:
                 # each filter is a clause
-                assert f.fieldname in self._entity_class.__record_fields__, "Clause refers to field (%s) not in entity class (%s)" % (f.fieldname, self._entity_class)
+                assert f.fieldname in self._entity_class.__record_metadata__, "Clause refers to field (%s) not in entity class (%s)" % (f.fieldname, self._entity_class)
 
                 set_trace()
                 value = getattr(result, f.fieldname)

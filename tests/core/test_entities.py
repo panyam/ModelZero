@@ -11,7 +11,7 @@ def test_entity_create(mocker):
         f3 = fields.Field(types.MZTypes.Float)
         f4 = fields.Field(types.MZTypes.Bool)
 
-    assert len(E.__record_fields__) == 4
+    assert len(E.__record_metadata__) == 4
 
     e = E(f1 = 0, f2 = 3, f3 = "5.5", f4 = True)
     assert e.f1 == "0"

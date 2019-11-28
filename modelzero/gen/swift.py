@@ -12,11 +12,11 @@ from ipdb import set_trace
 
 record_class_template = Template("""
 class {{class_name}} : AbstractEntity {
-{%- for name, field in record_class.__record_fields__.items() %}
+{%- for name, field in record_class.__record_metadata__.items() %}
     var {{name}} : {{ gen.swifttype_for(field.logical_type) }} = {{ gen.default_value_for(field.logical_type) }}
 {%- endfor %}
     enum CodingKeys : String, CodingKey {
-    {%- for name, field in record_class.__record_fields__.items() %}
+    {%- for name, field in record_class.__record_metadata__.items() %}
         case {{name}}
     {%- endfor %}
     }
@@ -26,7 +26,7 @@ class {{class_name}} : AbstractEntity {
 patch_record_class_template = Template("""
 extension {{class_name}} {
     class Patch : Codable {
-    {%- for name, field in patch_model.__record_fields__.items() %}
+    {%- for name, field in patch_model.__record_metadata__.items() %}
         var {{name}} : {{ gen.swifttype_for(field.logical_type) }}? = nil
     {%- endfor %}
     }

@@ -1,6 +1,6 @@
 
 class {{record_class.__name__}} : AbstractEntity {
-{%- for name, field in record_class.__record_fields__.items() %}
+{%- for name, field in record_class.__record_metadata__.items() %}
     var {{camelCase(name)}} : {{ gen.kotlin_sig_for(field.logical_type) }} 
         get() {
         {% if field.optional -%}
@@ -23,7 +23,7 @@ class {{record_class.__name__}} : AbstractEntity {
 
     override fun toMap() : Map<String, Any?> {
         return mapOf(
-        {%- for name, field in record_class.__record_fields__.items() -%}
+        {%- for name, field in record_class.__record_metadata__.items() -%}
             {%- if loop.index0 > 0 -%}, {%- endif -%}
             "{{name}}" to ensureAny({{ camelCase(name) }})
         {% endfor %})

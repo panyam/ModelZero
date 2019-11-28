@@ -43,5 +43,10 @@ def test_basic(mocker):
     assert u.record_class == User
 
     dt = d.derived_type
+    rc = dt.record_class
     assert dt.is_record_type
+    assert rc
 
+    # Ensure it has exactly the fields needed
+    set_trace()
+    assert dt.fields

@@ -95,6 +95,46 @@ class Field(object):
             raise Exception("basetype not found")
         return self.wrap_optionality(self.base_type)
 
+class RecordMetadata(object):
+    def __init__(self):
+        self._fieldnames = []
+        self._fields = {}
+
+    def __getitem__(self, fieldname):
+        return self._fields[fieldname]
+
+    def __len__(self): return len(self._fieldnames)
+
+    def __contains__(self, fieldname):
+        return fieldname in self._fields
+
+    def copy(self):
+        rm = RecordMetadata()
+        rm._fieldnames = self._fieldnames[:]
+        rm._fields = self._fields.copy()
+        return rm
+
+    def items(self):
+        for k in self._fieldnames:
+            yield k,self._fields[k]
+
+    def register(self, fieldname : str, field : "Type"):
+        if fieldname in self._fieldnames:
+            raise Exception(f"Duplicate field '{fieldname}' found")
+
+        field.field_name = fieldname
+
+        # What do we do if the field is already present 
+        # (ie via a base class or via a duplicate declaration)?
+        self._fieldnames.append(fieldname)
+        self._fields[fieldname] = field
+        # if not field.checker_name: field.checker_name = "has_" + fieldname
+        # setattr(self, field.checker_name, field.makechecker(fieldname))
+
+    @property
+    def fieldnames(self):
+        return iter(self._fieldnames)
+
 class RecordBase(object):
     """ Records are our base of all objects that need a representation. """
     def __init__(self, **kwargs):
@@ -103,13 +143,7 @@ class RecordBase(object):
 
     @classmethod
     def register_field(cls, fieldname : str, field : "Type"):
-        field.field_name = fieldname
-
-        # What do we do if the field is already present 
-        # (ie via a base class or via a duplicate declaration)?
-        cls.__record_fields__[fieldname] = field
-        # if not field.checker_name: field.checker_name = "has_" + fieldname
-        # setattr(cls, field.checker_name, field.makechecker(fieldname))
+        cls.__record_metadata__.register(fieldname, field)
 
     def __repr__(self):
         return "<%s.%s at %x>" % (self.__class__.__module__, self.__class__.__name__, id(self))
@@ -118,7 +152,7 @@ class RecordBase(object):
         if another is None: return False
         if type(self) != type(another): return False
         # Compare all fields
-        for k in self.__record_fields__:
+        for k in self.__record_metadata__.fieldnames:
             if getattr(self, k) != getattr(another, k):
                 return False
         return True
@@ -128,7 +162,7 @@ class RecordBase(object):
         return fieldname in self.__field_values__
 
     def __getitem__(self, fieldname):
-        if fieldname not in self.__record_fields__:
+        if fieldname not in self.__record_metadata__:
             raise Exception(f"Invalid field name: {fieldname}")
         return getattr(self, fieldname)
 
@@ -136,7 +170,7 @@ class RecordBase(object):
         return self.__getitem__(fieldname)
 
     def setfield(self, fieldname, value, reject_invalid_field = False):
-        if fieldname not in self.__record_fields__:
+        if fieldname not in self.__record_metadata__:
             if reject_invalid_field: 
                 set_trace()
                 raise Exception(f"Invalid field name: '{fieldname}'")
@@ -151,7 +185,7 @@ class RecordBase(object):
 
     def validate(self):
         field_errors = defaultdict(list)
-        for name, field in self.__record_fields__.items():
+        for name, field in self.__record_metadata__.items():
             ftype = field.logical_type
             fvalue = self.__field_values__.get(name, field.default_value)
             # TODO - should optional and nullable be treated differently?
@@ -174,8 +208,8 @@ class RecordMeta(type):
         x.__fqn__ = dct.get("__fqn__", ".".join([x.__module__, name]))
 
         # Register all fields
-        __record_fields__ = getattr(x, "__record_fields__", {}).copy()
-        setattr(x, "__record_fields__", __record_fields__)
+        __record_metadata__ = getattr(x, "__record_metadata__", RecordMetadata()).copy()
+        setattr(x, "__record_metadata__", __record_metadata__)
         for fieldname,entry in x.__dict__.copy().items():
             if issubclass(entry.__class__, Field):
                 x.register_field(fieldname, entry)

@@ -64,7 +64,7 @@ class ModelFormBase(FlaskForm):
     @classmethod
     def load_model_fields(cls):
         eclass = cls.RecordClass
-        model_fields = eclass.__record_fields__
+        model_fields = eclass.__record_metadata__
         for field_name, field in model_fields.items():
             # Ensure field_name is not already defined
             if not hasattr(cls, field_name):

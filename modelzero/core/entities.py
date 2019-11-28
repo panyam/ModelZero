@@ -61,7 +61,7 @@ class Key(object):
             assert len(parts) == len(kf), "Number of parts in key is not same as number of key fields"
             for f,v in zip(kf, parts):
                 # Validate field 
-                value = self.entity_class.__record_fields__[f].validate(v)
+                value = self.entity_class.__record_metadata__[f].validate(v)
                 self.parts.append(value)
 
     def __eq__(self, another):
