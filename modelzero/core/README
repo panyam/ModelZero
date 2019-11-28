@@ -205,7 +205,7 @@ FriendFields = Derivation(User) {
     "profilePic": Eval("profile_pic", size = 50)
 }
 
-return Derivation() {
+return Derivation(user : User) {
     "user": Eval("get_user", id = 4).Apply(Derivation(User) {
         "friends": Eval("get_friends", id = 4, first = 10).FMap(FriendFields)
         "mutualFriends": Eval("get_mutual_friends", id = 4, first = 10).FMap(FriendFields)
@@ -293,11 +293,15 @@ PageFragment = Derivation(User) {
     Eval("likers", "get_likers").FMap(Derivation(Page) { Select("count") })
 }
 
-return Derivation() {
-    Eval("profiles", "get_profiles", handles = ["zuck", "cocacola"]).FMap(Derivation(Profile) {
-        Select("handle")
-        Include("UserFragment", 0)
-        Include("PageFragment", 0)  // how to do type checks?
-    })
+return Derivation(user : User) {
+    Eval("full_name", "calc_full_name", $user.firstName, $user.lastName)
+    Select("profiles").apply(
+        Eval("get_profiles", handles = ["zuck", "cocacola"])
+            .FMap(Derivation(Profile) {
+                Select("handle")
+                Include("UserFragment", 0)
+                Include("PageFragment", 0)  // how to do type checks?
+            }
+    )
 }
 ```
