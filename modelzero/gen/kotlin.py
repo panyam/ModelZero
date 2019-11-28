@@ -152,9 +152,7 @@ class KotlinTypeFor(CaseMatcher):
             class_dict = dict(SourceRecordClass = record_class,
                               __module__ = gen.target_models_package,
                               __fqn__ = new_fqn)
-            new_record_class = type(new_name,
-                                    (types.Record,),
-                                    class_dict)
+            new_record_class = types.RecordType(new_name, **class_dict)
             t.record_type = types.RecordType(new_record_class)
             for name,field in record_class.__record_fields__.items():
                 newfield = field.clone()

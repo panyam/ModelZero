@@ -2,12 +2,12 @@
 from ipdb import set_trace
 from typing import List, Dict
 from taggedunion import Union, Variant
-from modelzero.core.records import Record
 
 def ensure_type(type_or_str):
     if type(type_or_str) is str:
         type_or_str = Type.as_type_ref(type_or_str)
     elif type(type_or_str) is not Type:
+        from modelzero.core.records import Record
         if issubclass(type_or_str, Record):
             type_or_str = Type.as_record_type(type_or_str)
         else:
@@ -68,6 +68,7 @@ class OpaqueType(object):
 
 class RecordType(object):
     def __init__(self, record_class_or_fqn):
+        from modelzero.core.records import Record
         if type(record_class_or_fqn) is str:
             self._record_fqn = record_class_or_fqn
             self._record_class = None
@@ -76,6 +77,11 @@ class RecordType(object):
             self._record_class = record_class_or_fqn
         else:
             raise Exception(f"Found {record_class_or_fqn}, Expected str or 'Record' class")
+
+    @classmethod
+    def new_record_class(cls, name, **class_dict):
+        from modelzero.core.records import Record
+        return type(name, (Record,), class_dict)
 
     @property
     def record_class(self):
