@@ -1,6 +1,7 @@
 
 from ipdb import set_trace
-from typing import List, Dict
+import typing
+from typing import List, Dict, Tuple
 from taggedunion import Union, Variant
 
 def ensure_type(type_or_str):
@@ -14,6 +15,12 @@ def ensure_type(type_or_str):
             set_trace()
             raise Exception(f"Expected type or string, found: {type_or_str}")
     return type_or_str
+
+class FuncType(object):
+    def __init__(self, param_types : List[typing.Union[str, Tuple[str, "Type"]]],
+                       return_type : "Type"):
+        self.param_types = param_types
+        self.return_type = return_type
 
 class TypeApp(object): 
     def __init__(self, origin_type : "Type", *args : List["Type"]):
@@ -108,7 +115,11 @@ class UnionType(object):
             assert resolved
         return self._union_class
 
-class SumType(DataType): pass
+class SumType(DataType):
+    def __init__(self, name : str = None, *variants : List["Type"]):
+        super().__init__(name)
+        for v in variants:
+            self.add(v)
 
 class Type(Union):
     record_type = Variant(RecordType)
@@ -118,6 +129,7 @@ class Type(Union):
     type_app = Variant(TypeApp)
     type_var = Variant(TypeVar)
     type_ref = Variant(TypeRef)
+    func_type = Variant(FuncType)
 
     def __getitem__(self, *keys):
         return Type.as_type_app(self, *keys)

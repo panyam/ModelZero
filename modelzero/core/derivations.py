@@ -7,10 +7,10 @@ from taggedunion import Union as TUnion
 
 class Expr(TUnion):
     fmap = Variant("FMap")
+    bind = Variant("Bind")
     func = Variant("Func")
     query = Variant("Query")
     fpath = Variant("FieldPath")
-    bind = Variant("Bind")
 
 class Select(object):
     """ Commands that projects a particular field into a source field. """
@@ -18,8 +18,9 @@ class Select(object):
         self.selectors = selectors
 
 class Include(object):
-    def __init__(self, query, **kwargs):
+    def __init__(self, query, condition = None, **kwargs):
         self.query = query
+        self.condition = condition
         self.kwargs = kwargs
 
 class Command(TUnion):
@@ -40,8 +41,9 @@ class Func(object):
         self.func_kwargs = func_kwargs
 
 class FMap(object):
-    def __init__(self, expr : "Expr"):
-        self.expr = expr
+    def __init__(self, func_expr : "Expr", **kwarg_exprs : Dict[str, "Expr"]):
+        self.func_expr = func_expr
+        self.kwarg_exprs = kwarg_exprs
 
 class Bind(object):
     def __init__(self, func_expr : "Expr", **kwarg_exprs : Dict[str, "Expr"]):
@@ -77,6 +79,10 @@ class Query(object):
         of this derivation.
         """
         self._commands.append(Include(query, **kwargs))
+        return self
+
+    def include_if(self, query : "Query", condition : "Expr", **kwargs : Dict[str, Expr]):
+        self._commands.append(Include(query, condition, **kwargs))
         return self
 
     def exclude(self, source_field_path : FieldPath):
