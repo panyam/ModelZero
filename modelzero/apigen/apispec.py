@@ -8,28 +8,6 @@ from modelzero.utils import get_param
 from modelzero.core import types
 from modelzero.core.custom_types import *
 
-def ensure_type(t):
-    if t is str:
-        return MZTypes.String
-    if t is int:
-        return MZTypes.Int
-    if t is bool:
-        return MZTypes.Bool
-    if type(t) is typing._GenericAlias:
-        if t.__origin__ == list:
-            return MZTypes.List[ensure_type(t.__args__[0])]
-        if t.__origin__ == dict:
-            return MZTypes.Map[ensure_type(t.__args__[0]), ensure_type(t.__args__[1])]
-        if t.__origin__ == typing.Union:
-            if len(t.__args__) == 2 and type(None) in t.__args__:
-                optional_of = t.__args__[0] or t.__args__[1]
-                return MZTypes.Optional[ensure_type(optional_of)]
-        set_trace()
-    try:
-        return types.ensure_type(t)
-    except Exception as exc:
-        raise exc
-
 class API(object):
     def __init__(self, name, router, description = "", url_prefix = ""):
         self.name = name
@@ -82,22 +60,12 @@ class Router(object):
 
 class Method(object):
     def __init__(self, method_or_fqn, *args, **kwargs):
-        if type(method_or_fqn) is str:
-            self._name = method_or_fqn
-            self._method = resolve_fqn(method_or_fqn)
-        else:
-            self._method = method_or_fqn
-            self._name = method_or_fqn.__name__
-        self.method_sig = signature(self._method)
+        self.function = Function(method_or_fqn)
         self.success_method = None
         self.error_method = None
         self.done_method = None
         self.param_docs = {}
-        self.expected_type = None
-        self.returned_type = None
         self.params(*args, **kwargs)
-        self._return_type = None
-        self._param_types = None
 
     @property
     def query_params(self):
@@ -115,64 +83,58 @@ class Method(object):
         return None, None
 
     @property
+    def func_type(self):
+        if self._func_type is None:
+            self._func_type = self.function.func_type
+            param_types = self._func_type.param_types
+            # Make sure params that dont have default values 
+            # are provided in kwargs
+            for name,ptype in param_types.items():
+                if not self.function.has_default(name) and name not in self.kwargs:
+                    raise Exception(f"Method param '{name}' not provided in router method: {self.fqn}")
+            for name,param in self.kwargs.items():
+                # Ensure name is actually accepted by the param
+                if name not in param_types:
+                    raise Exception(f"Parameter '{name}' not accepted by method '{self.fqn}'")
+                ptype = param_types[name]
+                if ptype is None or not isinstance(ptype, Type):
+                    raise Exception("Parameter '{name}' in '{self.fqn}' does not have a type annotation")
+        return self._func_type
+
+    @property
     def return_type(self):
-        if not self._return_type:
-            if self.method_sig.return_annotation is inspect._empty:
-                return None
-            self._return_type = ensure_type(self.method_sig.return_annotation)
-        if self._return_type is inspect._empty:
-            return None
-        return self._return_type
+        return self.func_type.return_type
 
     @property
     def param_types(self):
-        if self._param_types is None:
-            self._param_types = {}
-            for name,param in self.method_sig.parameters.items():
-                # Ensure all required fields are covered in the API call
-                if param.default is inspect._empty:
-                    if name not in self.kwargs:
-                        raise Exception(f"Method param '{name}' not provided in router method: {self.fqn}")
-                self._param_types[name] = None
-                if param.annotation and param.annotation is not inspect._empty:
-                    annot = param.annotation
-                    self._param_types[name] = ensure_type(annot)
-
-            for name,param in self.kwargs.items():
-                # Ensure name is actually accepted by the param
-                if name not in self._param_types:
-                    raise Exception(f"Parameter '{name}' not accepted by method '{self.fqn}'")
-                ptype = ensure_type(self._param_types[name])
-                if ptype is None:
-                    raise Exception("Parameter '{name}' in '{self.fqn}' does not have a type annotation")
-        return self._param_types
+        return self.func_type.param_types
 
     @property
     def method(self):
-        return self._method
+        return self.function.target
 
     @property
     def fqn(self):
-        return f"{self.method.__module__}.{self.name}"
+        return self.function.fqn
 
     @property
     def name(self):
-        return self._name
+        return self.function.name
 
     def params(self, *args, **kwargs):
         """ Specification on the kind of parameters that can be accepted by this method.  These params should map to the params accepted by the handler/operation method. """
         self.args = args
         self.kwargs = kwargs
-        self._param_types = None
-        return self
-
-    def expects(self, record_class):
-        self.expected_class = record_class
+        self._func_type = None
         return self
 
     def returns(self, retclass):
         self.returned_class = retclass
-        self._return_type = None
+        self._func_type = None
+        return self
+
+    def expects(self, record_class):
+        self.expected_class = record_class
         return self
 
     def doc(self, name, doc = "", source = "query"):

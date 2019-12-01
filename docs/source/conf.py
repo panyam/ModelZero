@@ -17,6 +17,7 @@
 
 # -- Project information -----------------------------------------------------
 
+version = "0.0.1"
 project = 'ModelZero'
 copyright = '2019, Sriram Panyam'
 author = 'Sriram Panyam'
@@ -28,7 +29,13 @@ author = 'Sriram Panyam'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    'recommonmark',
+    # "sphinx.ext.autodoc",
+    # "sphinx.ext.intersphinx",
+    #"sphinx_issues",
 ]
+issues_github_path = "panyam/ModelZero"
+
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -44,7 +51,22 @@ exclude_patterns = []
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'alabaster'
+# html_theme = 'bizstyle'
+# html_theme_options = {"index_sidebar_logo": False}
+html_context = {
+    "project_links": [
+    ]
+}
+html_sidebars = {
+    "index": ["project.html", "localtoc.html", "searchbox.html"],
+    "**": ["localtoc.html", "relations.html", "searchbox.html"],
+}
+singlehtml_sidebars = {"index": ["project.html", "localtoc.html"]}
+html_static_path = ["_static"]
+html_favicon = f"_static/ModelZero-icon.jpeg"
+html_logo = f"_static/ModelZero-icon.jpeg"
+html_title = "ModelZero Documentation ({})".format(version)
+html_show_sourcelink = False
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,

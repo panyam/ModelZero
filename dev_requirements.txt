@@ -5,3 +5,5 @@ pytest
 pytest_mock
 pytest-cov
 Flask
+sphinx
+recommonmark

@@ -15,4 +15,3 @@ phonenumbers
 google-cloud-datastore
 google-auth
 google-api
-sphinx

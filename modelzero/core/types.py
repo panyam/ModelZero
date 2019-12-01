@@ -17,7 +17,7 @@ def ensure_type(type_or_str):
     return type_or_str
 
 class FuncType(object):
-    def __init__(self, param_types : List[typing.Union[str, Tuple[str, "Type"]]],
+    def __init__(self, param_types : Dict[str, "Type"],
                        return_type : "Type"):
         self.param_types = param_types
         self.return_type = return_type
