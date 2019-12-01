@@ -2,6 +2,7 @@
 from ipdb import set_trace
 from typing import List, Union, Dict, Tuple
 from modelzero.core import types
+from modelzero.core.records import Record, Field
 from taggedunion import Variant
 from taggedunion import Union as TUnion, CaseMatcher, case
 
@@ -34,13 +35,11 @@ class TypeOf(CaseMatcher):
 
     @case("fmap")
     def typeOfFMap(self, fmap, query_stack : List["Query"]):
-        set_trace()
-        pass
+        return self(bind.func_expr, query_stack)
 
     @case("bind")
     def typeOfBind(self, bind, query_stack : List["Query"]):
-        set_trace()
-        pass
+        return self(bind.func_expr, query_stack)
 
     @case("func")
     def typeOfFunc(self, func, query_stack : List["Query"]):
@@ -84,19 +83,35 @@ class CommandProcessor(CaseMatcher):
 
     @case("selector")
     def processSelector(self, selector : Selector,
-                        curr_type : types.Type,
+                        curr_record : Record,
                         query_stack : List["Query"]):
         curr_query = query_stack[0]
         source_type = None
         if selector.source_value is None:
             # Get it from the target type 
             # what if there are multiple target types?
-            set_trace()
-            a = 3
+            if curr_query.num_inputs != 1:
+                raise Exception("Number if query inputs is not 1.  Source value for selector required")
+            input = curr_query.input
+            if input.is_record_type:
+                source_type = input.record_class.__record_metadata__[selector.target_name].logical_type
+            elif input.is_union_type:
+                set_trace()
+            else:
+                raise Exception(f"Selector field '{selector.target_name}' must index a record or a union")
         else:
             # The type of the expression is the selector's type
             source_type = TypeOf()(selector.source_value, query_stack)
-        set_trace()
+
+        # See if this already exists and if types match - then OK
+        rmeta = curr_record.__record_metadata__
+        if selector.target_name in rmeta:
+            field = rmeta[selector.target_name]
+            curr_type = field.logical_type
+            if source_type != logical_type:
+                raise Exception(f"Duplicate field '{selector.target_name}' being added")
+        new_field = Field(source_type)
+        curr_record.register_field(selector.target_name, new_field)
 
     @case("fragment")
     def processFragment(self, selector : Selector,
@@ -149,6 +164,14 @@ class Query(object):
 
     @property
     def fqn(self): return self._fqn
+
+    @property
+    def num_inputs(self): return len(self._inputs)
+
+    @property
+    def input(self):
+        v = self._inputs.values()
+        return list(v)[0]
 
     def get_input(self, name : str) -> types.Type:
         return self._inputs[name]
@@ -203,5 +226,5 @@ class Query(object):
 
             # now add fields from each command
             for command in self._commands:
-                CommandProcessor()(command, rec_type, [self])
+                CommandProcessor()(command, rec_class, [self])
         return self._query_type

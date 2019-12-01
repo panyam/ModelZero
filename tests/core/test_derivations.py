@@ -80,6 +80,21 @@ def test_basic(mocker):
             ("me", Bind(d, user = Func("get_current_user")))
          )
     dt = out.query_type
+    assert dt.is_record_type
+    rmeta = dt.record_class.__record_metadata__
+    assert rmeta.num_fields == 1
+
+    assert "me" in rmeta
+    me = rmeta["me"].logical_type
+    assert me.is_record_type
+    rmeta = me.record_class.__record_metadata__
+    assert rmeta.num_fields == 5
+    assert "id" in rmeta
+    assert "firstName" in rmeta
+    assert "lastName" in rmeta
+    assert "birthday" in rmeta
+    assert "friends" in rmeta
+    set_trace()
 
 def test_example_10(mocker):
     """

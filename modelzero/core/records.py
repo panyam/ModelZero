@@ -6,6 +6,8 @@ import typing
 from modelzero.utils import with_metaclass
 from modelzero.core import errors
 
+__doc_order_by__ = [ "RecordBase", "Field", "RecordMetadata", "Record", "RecordMeta" ]
+
 class Field(object):
     USE_DEFAULT = None
     def __init__(self, base_type = None, **kwargs):
@@ -102,6 +104,9 @@ class RecordMetadata(object):
 
     def __getitem__(self, fieldname):
         return self._fields[fieldname]
+
+    @property
+    def num_fields(self): return len(self._fieldnames)
 
     def __len__(self): return len(self._fieldnames)
 
