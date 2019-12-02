@@ -1,10 +1,17 @@
 
-from ipdb import set_trace
+import typing
 from modelzero.core.derivations import Query, Apply, FMap
 from modelzero.core.types import Type
 from modelzero.core.custom_types import MZTypes
 from modelzero.core.records import *
 from modelzero.core import custom_fields as fields
+
+def assert_has_fields(rec_type, fields : typing.List[str]):
+    assert rec_type.is_record_type
+    rmeta = rec_type.record_class.__record_metadata__
+    assert rmeta.num_fields == len(fields)
+    for f in fields:
+        assert f in rmeta
 
 class Date(Record):
     day = fields.Field(MZTypes.Int)
@@ -13,6 +20,7 @@ class Date(Record):
 
 class UserRecord(Record):
     id = fields.Field(MZTypes.String)
+    handle = fields.Field(MZTypes.String)
     firstName = fields.Field(MZTypes.String)
     lastName = fields.Field(MZTypes.String)
     name = fields.Field(MZTypes.String)
@@ -23,10 +31,11 @@ User = Type.as_record_type(UserRecord)
 
 class PageRecord(Record):
     id = fields.Field(MZTypes.String)
+    handle = fields.Field(MZTypes.String)
     url = fields.Field(MZTypes.URL)
 Page = Type.as_record_type(PageRecord)
 
-PageOrUser = Type.as_sum_type(Page, User)
+PageOrUser = Type.as_sum_type("PageOrUser", Page, User)
 
 class FriendsRecord(Record):
     count = fields.Field(MZTypes.Int)
@@ -43,6 +52,16 @@ def get_current_user() -> User:
     pass
 
 def get_profile_pic(id : int, size : int = 100, width : int = 100, height : int = 100) -> str:
+    pass
+
+def get_friends(id : int, first : int = 10) -> typing.List[User]: pass
+
+def get_mutual_friends(id : int, first : int = 10) -> MZTypes.List[User]: pass
+
+def get_likers(id : int, first : int = 10) -> MZTypes.List[User]:
+    pass
+
+def get_profiles(handles : typing.List[str]) -> typing.List[typing.Union[User, Page]]:
     pass
 
 def test_derivation_init(mocker):
@@ -80,32 +99,22 @@ def test_basic(mocker):
             "id",
             "firstName",
             "lastName",
-            ("birthday", Apply(Query(date = Date).select("month", "day"),
-                              date = "$user/birthday")),
-            ("friends", FMap(Query(friend = User).select("name"), 
-                             friend__from = "$user/friends"))
+            ("birthday", Apply(Query(date = Date).select("month", "day"), date = "$user/birthday")),
+            ("friends", FMap(Query(friend = User).select("name"), "$user/friends"))
         )
     out = Query().select(
             ("me", Apply(d, user = Apply(get_current_user)))
          )
     dt = out.return_type
     assert dt.is_record_type
-    rmeta = dt.record_class.__record_metadata__
-    assert rmeta.num_fields == 1
+    assert_has_fields(dt, ["me"])
 
-    assert "me" in rmeta
-    me = rmeta["me"].logical_type
-    assert me.is_record_type
-    rmeta = me.record_class.__record_metadata__
-    assert rmeta.num_fields == 5
-    assert "id" in rmeta
-    assert "firstName" in rmeta
-    assert "lastName" in rmeta
-    assert "birthday" in rmeta
-    friends = rmeta["friends"]
-    friends_type = friends.logical_type
-    assert friends_type.is_type_app
-    set_trace()
+    me = dt.record_class.__record_metadata__["me"].logical_type
+    assert_has_fields(me, ["id", "firstName", "lastName", "birthday", "friends"])
+
+    friends = me.record_class.__record_metadata__["friends"].logical_type
+    assert friends.origin_type == MZTypes.List
+    assert_has_fields(friends.type_args[0], ["name"])
 
 def test_example_10(mocker):
     """
@@ -126,7 +135,12 @@ def test_example_10(mocker):
     out = Query().select(
             ("user", d(user = Apply(get_user, id = 4)))
          )
-
+    dt = out.return_type
+    assert_has_fields(dt,["user"])
+    user = dt.get_child_type("user")
+    assert_has_fields(user,["id", "name", "profilePic"])
+    ppic = user.get_child_type("profilePic")
+    assert ppic == MZTypes.String
 
 def test_example_14(mocker):
     """
@@ -148,7 +162,13 @@ def test_example_14(mocker):
         )
     out = Query().select(
             ("user", d(user = Apply(get_user, id = 4)))
-         )
+          )
+    dt = out.return_type
+    assert_has_fields(dt,["user"])
+    user = dt.get_child_type("user")
+    assert_has_fields(user,["id", "name", "profilePic"])
+    ppic = user.get_child_type("profilePic")
+    assert ppic == MZTypes.String
 
 
 def test_no_fragments(mocker):
@@ -177,16 +197,14 @@ def test_no_fragments(mocker):
                                     Apply(get_profile_pic,
                                             id = "$user/id", size = 64))
                             ),
-                            user__from = Apply(get_friends, id=4, first=10))),
+                            Apply(get_friends, id=4, first=10))),
             ("mutualFriends", FMap(Query(user = User).select(
                                 "id",
                                 "name",
                                 ("profilePic",
                                     Apply(get_profile_pic,
                                         id = "$user/id", size = 64))
-                            ), 
-                            user__from = Apply(get_mutual_friends,
-                                            id = 4, first = 10)))
+                              ), Apply(get_mutual_friends, id = 4, first = 10)))
         )
     out = Query().select(("user", Apply(uq, _ = Apply(get_user, id = 4))))
 
@@ -217,9 +235,9 @@ def test_with_fragments(mocker):
         )
     uq = Query().select(
             ("friends", # typeof(friends) must be (List/Stream/Scan)[User]
-                FMap(f1, user__from = Apply(get_friends, id = 4, first = 10))),
+                FMap(f1, Apply(get_friends, id = 4, first = 10))),
             ("mutualFriends", # typeof() must be (List/Stream/Scan)[User]
-                FMap(f1, user__from = Apply(get_mutual_friends, id = 4, first = 10)))
+                FMap(f1, Apply(get_mutual_friends, id = 4, first = 10)))
         )
     out = Query().select(("user", Apply(uq, _ = Apply(get_user, id = 4))))
 
@@ -256,9 +274,9 @@ def test_nested_fragments(mocker):
          ).include(f1, user = "$user")
     uq = Query().select(
             ("friends", # typeof(friends) must be (List/Stream/Scan)[User]
-                FMap(f2, user__from = Apply(get_friends, id = 4, first = 10))),
+                FMap(f2, Apply(get_friends, id = 4, first = 10))),
             ("mutualFriends", # typeof() must be (List/Stream/Scan)[User]
-                FMap(f2, user__from = Apply(get_mutual_friends, id = 4, first = 10)))
+                FMap(f2, Apply(get_mutual_friends, id = 4, first = 10)))
         )
     out = Query().select(("user", Apply(uq, _ = Apply(get_user, id = 4))))
 
@@ -266,8 +284,6 @@ def test_type_conditions(mocker):
     """
         https://graphql.github.io/graphql-spec/draft/#example-6ce0d
         query FragmentTyping {
-          profiles(handles: ["zuck", "cocacola"]) {
-            handle
             ...userFragment
             ...pageFragment
           }
@@ -349,7 +365,8 @@ def test_inline_fragments_optional(mocker):
     }
     """
     pq = Query(user = User, expandInfo = MZTypes.Bool)          \
-            .select("id", "name")                               \
+            .select(("id", "$user/id"),
+                    ("name", "$user/name"))                     \
             .include_if("$expandInfo",
                 Query(user = User).select("firstName", "lastName", "birthday"),
                 user = "$user")

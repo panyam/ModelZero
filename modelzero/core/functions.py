@@ -3,11 +3,12 @@ from ipdb import set_trace
 import typing
 from typing import List, Union, Dict, Tuple
 from modelzero.core import types
+from modelzero.core.custom_types import MZTypes
 import inspect
 from inspect import signature
 
 def ensure_type(t):
-    if t is None or inspect._empty:
+    if t in (None, inspect._empty):
         return None
     if t is str:
         return MZTypes.String
@@ -24,7 +25,11 @@ def ensure_type(t):
             if len(t.__args__) == 2 and type(None) in t.__args__:
                 optional_of = t.__args__[0] or t.__args__[1]
                 return MZTypes.Optional[ensure_type(optional_of)]
+            else:
+                children = [ensure_type(ta) for ta in t.__args__]
+                return types.Type.as_sum_type(None, *children)
         set_trace()
+        a = 3
     try:
         return types.ensure_type(t)
     except Exception as exc:
@@ -43,6 +48,12 @@ class Function(object):
     @property
     def return_type(self):
         return self.func_type.return_type
+
+    def has_param(self, name):
+       return name in self.func_type.param_types
+
+    def param(self, name):
+        return self.func_type.param_types[name]
 
     @property
     def param_names(self):

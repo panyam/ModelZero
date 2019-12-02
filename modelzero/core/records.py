@@ -1,7 +1,7 @@
 
+from ipdb import set_trace
 from collections import defaultdict
 from taggedunion import Union, Variant
-from ipdb import set_trace
 import typing
 from modelzero.utils import with_metaclass
 from modelzero.core import errors
@@ -128,6 +128,9 @@ class RecordMetadata(object):
             raise Exception(f"Duplicate field '{fieldname}' found")
 
         field.field_name = fieldname
+
+        if fieldname in self._fieldnames:
+            raise Exception(f"Field already registered: {fieldname}")
 
         # What do we do if the field is already present 
         # (ie via a base class or via a duplicate declaration)?

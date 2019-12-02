@@ -1,4 +1,5 @@
 
+from ipdb import set_trace
 import importlib
 import logging
 import os, datetime
@@ -130,6 +131,8 @@ def resolve_fqn(fqn):
     result = fqn
     if not resolved:
         parts = fqn.split(".")
+        if len(parts) == 1:
+            set_trace()
         first,last = parts[:-1],parts[-1]
         module = ".".join(first)
         module = importlib.import_module(module)
