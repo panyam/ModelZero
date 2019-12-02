@@ -130,11 +130,39 @@ class CommandProcessor(CaseMatcher):
     def processFragment(self, fragment : Fragment,
                         curr_record : Record,
                         query_stack : List["Query"]):
+        optional = fragment.condition is not None
+        # Another way this can be optional is if the arguments accepted
+        # by the fragment are a subclass of the actual argument being passed
+        # eg:
+        # Fragment F1(a = A) { }
+        # Fragment F2(b = B) { }
+        # Query Q(item = AorB) {
+        #   Include(F1, a = item)
+        #   Include(F2, b = item)
+        # }
+        # Here a in F1 is a specific kind and its inclusion requires 
+        # a cast from AorB to A.  This cast could fail, thereby failing
+        # F1's inclusion.  In this case every member in F1 should be optional
+        # in Q
+        #
+        # Going the otherway however is fine and wont incur an optionalling
+        # Fragment F1(item = AorB) { }
+        # Query Q(a= A) {
+        #   Include(F1, item = a)
+        # }
+        #
+        # Finally if there is a type mismatch (or casting is not possible)
+        # It is an error.
+        for name,expr in fragment.kwargs.items():
+            expr_type = TypeOf()(expr, query_stack)
+            param_type = fragment.query.param(name)
+            if expr_type != param_type:
+                optional = True
+                break
         query_rec = fragment.query.func_type.return_type.record_class
         for name, field in query_rec.__record_metadata__.items():
             cloned_field = field.clone()
-            if fragment.condition:
-                cloned_field.optional = True
+            cloned_field.optional = field.optional or optional
             curr_record.register_field(name, cloned_field)
 
 class Literal(object):

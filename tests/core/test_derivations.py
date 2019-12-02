@@ -45,7 +45,7 @@ class LikersRecord(Record):
     count = fields.Field(MZTypes.Int)
 Likers = Type.as_record_type(LikersRecord)
 
-def get_user(id : int) -> User:
+def get_user(id : int, handle : str = None) -> User:
     pass
 
 def get_current_user() -> User:
@@ -63,6 +63,9 @@ def get_likers(id : int, first : int = 10) -> MZTypes.List[User]:
 
 def get_profiles(handles : typing.List[str]) -> typing.List[typing.Union[User, Page]]:
     pass
+
+
+#### BEGIN Tests
 
 def test_derivation_init(mocker):
     d = Query(user = User)
@@ -109,10 +112,10 @@ def test_basic(mocker):
     assert dt.is_record_type
     assert_has_fields(dt, ["me"])
 
-    me = dt.record_class.__record_metadata__["me"].logical_type
+    me = dt.get_child_type("me")
     assert_has_fields(me, ["id", "firstName", "lastName", "birthday", "friends"])
 
-    friends = me.record_class.__record_metadata__["friends"].logical_type
+    friends = me.get_child_type("friends")
     assert friends.origin_type == MZTypes.List
     assert_has_fields(friends.type_args[0], ["name"])
 
@@ -166,10 +169,9 @@ def test_example_14(mocker):
     dt = out.return_type
     assert_has_fields(dt,["user"])
     user = dt.get_child_type("user")
-    assert_has_fields(user,["id", "name", "profilePic"])
-    ppic = user.get_child_type("profilePic")
+    assert_has_fields(user,["id", "name", "smallPic", "bigPic"])
+    ppic = user.get_child_type("smallPic")
     assert ppic == MZTypes.String
-
 
 def test_no_fragments(mocker):
     """
@@ -208,6 +210,16 @@ def test_no_fragments(mocker):
         )
     out = Query().select(("user", Apply(uq, _ = Apply(get_user, id = 4))))
 
+    ret_type = out.return_type
+    assert_has_fields(ret_type,["user"])
+    user = ret_type.get_child_type("user")
+    assert_has_fields(user,["friends", "mutualFriends"])
+
+    friends = user.get_child_type("friends").type_args[0]
+    mutualFriends = user.get_child_type("mutualFriends").type_args[0]
+    assert_has_fields(friends, ["id", "name", "profilePic"])
+    assert_has_fields(mutualFriends, ["id", "name", "profilePic"])
+
 def test_with_fragments(mocker):
     """
     https://graphql.github.io/graphql-spec/draft/#example-72b4e
@@ -241,6 +253,15 @@ def test_with_fragments(mocker):
         )
     out = Query().select(("user", Apply(uq, _ = Apply(get_user, id = 4))))
 
+    ret_type = out.return_type
+    assert_has_fields(ret_type,["user"])
+    user = ret_type.get_child_type("user")
+    assert_has_fields(user,["friends", "mutualFriends"])
+
+    friends = user.get_child_type("friends").type_args[0]
+    mutualFriends = user.get_child_type("mutualFriends").type_args[0]
+    assert_has_fields(friends, ["id", "name", "profilePic"])
+    assert_has_fields(mutualFriends, ["id", "name", "profilePic"])
 
 def test_nested_fragments(mocker):
     """
@@ -280,6 +301,16 @@ def test_nested_fragments(mocker):
         )
     out = Query().select(("user", Apply(uq, _ = Apply(get_user, id = 4))))
 
+    ret_type = out.return_type
+    assert_has_fields(ret_type,["user"])
+    user = ret_type.get_child_type("user")
+    assert_has_fields(user,["friends", "mutualFriends"])
+
+    friends = user.get_child_type("friends").type_args[0]
+    mutualFriends = user.get_child_type("mutualFriends").type_args[0]
+    assert_has_fields(friends, ["id", "name", "profilePic"])
+    assert_has_fields(mutualFriends, ["id", "name", "profilePic"])
+
 def test_type_conditions(mocker):
     """
         https://graphql.github.io/graphql-spec/draft/#example-6ce0d
@@ -314,6 +345,17 @@ def test_type_conditions(mocker):
     out = Query().select(("profiles",
             Apply(pq, _ = Apply(get_profiles, handles = ["zuck", "cocacola"]))))
 
+    ret_type = out.return_type
+    assert_has_fields(ret_type,["profiles"])
+    profiles = ret_type.get_child_type("profiles")
+    assert_has_fields(profiles, ["handle", "likers", "friends"])
+
+    friends = profiles.get_child_type("friends")
+    likers = profiles.get_child_type("likers")
+    assert friends.is_type_app and friends.origin_type == MZTypes.Optional
+    assert likers.is_type_app and likers.origin_type == MZTypes.Optional
+    assert_has_fields(friends.type_args[0], ["count"])
+    assert_has_fields(likers.type_args[0], ["count"])
 
 def test_inline_fragments(mocker):
     """
@@ -348,6 +390,17 @@ def test_inline_fragments(mocker):
                     page = "$profile")
     out = Query().select(("profiles",
             Apply(pq, _ = Apply(get_profiles, handles = ["zuck", "cocacola"]))))
+    ret_type = out.return_type
+    assert_has_fields(ret_type,["profiles"])
+    profiles = ret_type.get_child_type("profiles")
+    assert_has_fields(profiles, ["handle", "likers", "friends"])
+
+    friends = profiles.get_child_type("friends")
+    likers = profiles.get_child_type("likers")
+    assert friends.is_type_app and friends.origin_type == MZTypes.Optional
+    assert likers.is_type_app and likers.origin_type == MZTypes.Optional
+    assert_has_fields(friends.type_args[0], ["count"])
+    assert_has_fields(likers.type_args[0], ["count"])
 
 def test_inline_fragments_optional(mocker):
     """
@@ -372,3 +425,11 @@ def test_inline_fragments_optional(mocker):
                 user = "$user")
     out = Query().select(("user",
             Apply(pq, _ = Apply(get_user, handle = "zuck"))))
+
+    ret_type = out.return_type
+    assert_has_fields(ret_type,["user"])
+    user = ret_type.get_child_type("user")
+    assert_has_fields(user, ["id", "name", "firstName", "lastName", "birthday"])
+    for fn in ["firstName", "lastName", "birthday"]:
+        ftype = user.get_child_type(fn)
+        assert ftype.is_type_app and ftype.origin_type == MZTypes.Optional
