@@ -44,6 +44,9 @@ class Function(object):
     def param_names(self):
         return self.func_type.param_types.keys()
 
+    def call(self, **kwargs):
+        return self(**kwargs)
+
     def __call__(self, **kwargs):
         """ A derivation must also be callable since it is possible it is also used as a Transformer! """
         return Apply(self, **kwargs)

@@ -124,10 +124,6 @@ class Query(exprs.Function):
     def get_input(self, name : str) -> types.Type:
         return self._inputs[name]
 
-    def apply(self, *commands : List["Command"]) -> "Command":
-        self._commands.extend(commands)
-        return self
-
     def include(self, query : "Query", **kwargs : Dict[str, "Expr"]):
         """ Includes one or all fields from the source type at the root level
         of this query
@@ -161,6 +157,7 @@ class Query(exprs.Function):
             if not name:
                 name = f"Derivation_{self._counter}"
                 self.__class__._counter += 1
+                classdict["__fqn__"] = name
             rec_class = types.RecordType.new_record_class(name, **classdict)
             rec_type = types.RecordType(rec_class)
             self._return_type.record_type = rec_type
