@@ -4,15 +4,6 @@ import typing
 from typing import List, Dict, Tuple
 from taggedunion import Union, Variant
 
-class FieldPath(object):
-    def __init__(self, value : typing.Union[str, typing.List[str]]):
-        if type(value) is str:
-            value = [v.strip() for v in value.split("/") if v.strip()]
-        self.parts = value
-
-    def __getitem__(self, index):
-        return self.parts[index]
-
 def ensure_type(type_or_str):
     if type(type_or_str) is str:
         type_or_str = Type.as_type_ref(type_or_str)

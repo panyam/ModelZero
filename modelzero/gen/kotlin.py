@@ -149,10 +149,10 @@ class KotlinTypeFor(CaseMatcher):
         new_fqn = f"{gen.target_models_package}.{new_name}"
         t,nc = gen.ensure_kotlin_type(new_fqn)
         if nc:
-            class_dict = dict(SourceRecordClass = record_class,
+            classdict = dict(SourceRecordClass = record_class,
                               __module__ = gen.target_models_package,
                               __fqn__ = new_fqn)
-            new_record_class = types.RecordType(new_name, **class_dict)
+            new_record_class = types.RecordType.new_record_class(new_name, **classdict)
             t.record_type = types.RecordType(new_record_class)
             for name,field in record_class.__record_metadata__.items():
                 newfield = field.clone()
@@ -166,6 +166,14 @@ class KotlinTypeFor(CaseMatcher):
 
     @case("sum_type")
     def kTypeForSumType(self, thetype : types.SumType):
+        set_trace()
+
+    @case("func_type")
+    def kTypeForFuncType(self, thetype : types.FuncType):
+        set_trace()
+
+    @case("product_type")
+    def kTypeForProductType(self, thetype : types.ProductType):
         set_trace()
 
     @case("type_var")
@@ -224,6 +232,14 @@ class KotlinTypeSig(CaseMatcher):
     def sigForTypeRef(self, thetype : types.TypeRef):
         set_trace()
 
+    @case("func_type")
+    def sigForFuncType(self, thetype : types.FuncType):
+        set_trace()
+
+    @case("product_type")
+    def sigForProductType(self, thetype : types.ProductType):
+        set_trace()
+
     @case("type_app")
     def sigForTypeApp(self, type_app : types.TypeApp):
         gen = self.gen
@@ -268,6 +284,14 @@ class DefaultValue(CaseMatcher):
 
     @case("sum_type")
     def defValForSumType(self, thetype : types.SumType):
+        set_trace()
+
+    @case("func_type")
+    def defValFuncType(self, thetype : types.FuncType):
+        return "null"
+
+    @case("product_type")
+    def defValProductType(self, thetype : types.ProductType):
         set_trace()
 
     @case("type_var")
@@ -318,6 +342,14 @@ class AnyToTyped(CaseMatcher):
 
     @case("union_type")
     def callForUnionType(self, thetype : types.UnionType, varvalue):
+        set_trace()
+
+    @case("func_type")
+    def callForFuncType(self, thetype : types.FuncType):
+        return "null"
+
+    @case("product_type")
+    def callForProductType(self, thetype : types.ProductType):
         set_trace()
 
     @case("sum_type")

@@ -6,6 +6,7 @@ from ipdb import set_trace
 from modelzero.core.resources import BaseResource
 from modelzero.utils import get_param 
 from modelzero.core import types
+from modelzero.core import functions
 from modelzero.core.custom_types import *
 
 class API(object):
@@ -60,7 +61,7 @@ class Router(object):
 
 class Method(object):
     def __init__(self, method_or_fqn, *args, **kwargs):
-        self.function = Function(method_or_fqn)
+        self.function = functions.NativeFunction(method_or_fqn)
         self.success_method = None
         self.error_method = None
         self.done_method = None
@@ -90,7 +91,7 @@ class Method(object):
             # Make sure params that dont have default values 
             # are provided in kwargs
             for name,ptype in param_types.items():
-                if not self.function.has_default(name) and name not in self.kwargs:
+                if not self.function.has_default_value(name) and name not in self.kwargs:
                     raise Exception(f"Method param '{name}' not provided in router method: {self.fqn}")
             for name,param in self.kwargs.items():
                 # Ensure name is actually accepted by the param

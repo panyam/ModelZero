@@ -2,97 +2,24 @@
 from ipdb import set_trace
 from typing import List, Union, Dict, Tuple
 from modelzero.core import types, functions
-from modelzero.core.types import FieldPath
+from modelzero.core import exprs
 from modelzero.core.records import Record, Field
-from modelzero.core.custom_types import MZTypes
 from taggedunion import Variant
 from taggedunion import Union as TUnion, CaseMatcher, case
 
-def ensure_expr(input):
-    if input is None: return None
-    T = type(input)
-    if T is Expr: return input
-    out = Expr()
-    if T is FMap: out.fmap = input
-    elif T is Apply: out.apply = input
-    elif T is Query: out.query = input
-    elif T is functions.NativeFunction: out.native_func = input
-    elif T is FieldPath: out.fpath = input
-    elif T is str and input[0] == "$":
-        # create field path
-        out.fpath = FieldPath(input[1:])
-    else:
-        if T not in (str, int, bool, float, tuple, list):
-            set_trace()
-            assert False
-        out.literal = Literal(input)
-    return out
-
-class Expr(TUnion):
-    fmap = Variant("FMap")
-    apply = Variant("Apply")
-    fpath = Variant("FieldPath")
-    query = Variant("Query")
-    native_func = Variant(functions.NativeFunction)
-    literal = Variant("Literal")
-
-class TypeOf(CaseMatcher):
-    __caseon__ = Expr
-
-    @case("fmap")
-    def typeOfFMap(self, fmap, query_stack : List["Query"]):
-        func_expr_type = self(fmap.func_expr, query_stack)
-        source_type = self(fmap.source_expr, query_stack)
-        if not source_type:
-            set_trace()
-        assert source_type.is_type_app
-        assert len(source_type.type_args) == 1, "Not sure how to deal with multiple type args in a functor"
-        origin_type = source_type.origin_type
-        return origin_type[func_expr_type]
-
-    @case("apply")
-    def typeOfApply(self, apply, query_stack : List["Query"]):
-        return self(apply.func_expr, query_stack)
-
-    @case("fpath")
-    def typeOfFieldPath(self, fpath : FieldPath, query_stack : List["Query"]):
-        hitquery = None
-        for q in query_stack:
-            if q.has_param(fpath[0]):
-                hitquery = q
-                break
-        if hitquery is None:
-            raise Exception(f"Field path start variable '{fpath[0]}' not an input to any query")
-
-        param = q.param(fpath[0])
-        return param.type_for_field_path(*fpath.parts[1:])
-
-    @case("literal")
-    def typeOfLiteral(self, literal, query_stack : List["Query"]):
-        breakpoint()
-        pass
-
-    @case("query")
-    def typeOfQuery(self, query, query_stack : List["Query"]):
-        return query.return_type
-
-    @case("native_func")
-    def typeOfNativeFunction(self, natfunc, query_stack : List["Query"]):
-        return natfunc.return_type
-
 class Selector(object):
     """ Commands that projects a particular field into a source field. """
-    def __init__(self, name : str, source : Expr = None):
+    def __init__(self, name : str, source : "Expr" = None):
         self.target_name = name
         if source:
-            source = ensure_expr(source)
+            source = exprs.ensure_expr(source)
         self.source_value = source
 
 class Fragment(object):
     def __init__(self, query, condition : "Expr" = None, **kwargs):
         self.query = query
-        self.condition = ensure_expr(condition)
-        self.kwargs = {k:ensure_expr(v) for k,v in kwargs.items()}
+        self.condition = exprs.ensure_expr(condition)
+        self.kwargs = {k:exprs.ensure_expr(v) for k,v in kwargs.items()}
 
 class Command(TUnion):
     selector = Variant(Selector)
@@ -108,13 +35,14 @@ class CommandProcessor(CaseMatcher):
         source_type = None
         source_value = selector.source_value
         if source_value is None:
+            from modelzero.core.exprs import Expr
             curr_query = query_stack[0]
             if curr_query.num_inputs == 1:
                 inname,intype = curr_query.input
                 source_value = Expr.as_fpath([inname, selector.target_name])
             else:
                 source_value = Expr.as_fpath(selector.target_name)
-        source_type = TypeOf()(source_value, query_stack)
+        source_type = exprs.TypeOf()(source_value, query_stack)
 
         # See if this already exists and if types match - then OK
         rmeta = curr_record.__record_metadata__
@@ -154,7 +82,7 @@ class CommandProcessor(CaseMatcher):
         # Finally if there is a type mismatch (or casting is not possible)
         # It is an error.
         for name,expr in fragment.kwargs.items():
-            expr_type = TypeOf()(expr, query_stack)
+            expr_type = exprs.TypeOf()(expr, query_stack)
             param_type = fragment.query.param(name)
             if expr_type != param_type:
                 optional = True
@@ -165,33 +93,10 @@ class CommandProcessor(CaseMatcher):
             cloned_field.optional = field.optional or optional
             curr_record.register_field(name, cloned_field)
 
-class Literal(object):
-    def __init__(self, value):
-        self.value = value
-
-class FMap(object):
-    def __init__(self, func_expr : "Expr", source_expr : "Expr"):
-        self.func_expr = ensure_expr(func_expr)
-        self.source_expr = ensure_expr(source_expr)
-
-class Apply(object):
-    def __init__(self, func_expr : Union[str, "Function"],
-                 **kwargs_exprs : Dict[str, "Expr"]):
-        if hasattr(func_expr, "__call__") and not issubclass(func_expr.__class__, functions.Function):
-            func_expr = functions.NativeFunction(func_expr)
-        self.func_expr = ensure_expr(func_expr)
-
-        remargs = func_expr.param_names
-
-        self.kwargs_exprs = {}
-        for k,v in kwargs_exprs.items():
-            kwargs_exprs[k] = ensure_expr(v)
-            {k:ensure_expr(v) for k,v in kwargs_exprs.items()}
-
-class Query(functions.Function):
+class Query(exprs.Function):
     def __init__(self, fqn = None, **input_types : Dict[str, types.Type]):
         super().__init__()
-        self._inputs = {k: types.ensure_type(v) for k, v in input_types.items()}
+        self._inputs = {k: exprs.ensure_type(v) for k, v in input_types.items()}
         self._return_type = None
         self._func_type = None
         self._commands : List[Union[Selector, Fragment]] = []
@@ -223,20 +128,16 @@ class Query(functions.Function):
         self._commands.extend(commands)
         return self
 
-    def include(self, query : "Query", **kwargs : Dict[str, Expr]):
+    def include(self, query : "Query", **kwargs : Dict[str, "Expr"]):
         """ Includes one or all fields from the source type at the root level
-        of this derivation.
+        of this query
         """
         self._commands.append(Command.as_fragment(query, **kwargs))
         return self
 
-    def include_if(self, condition : "Expr", query : "Query", **kwargs : Dict[str, Expr]):
+    def include_if(self, condition : "Expr", query : "Query", **kwargs : Dict[str, "Expr"]):
         self._commands.append(Command.as_fragment(query, condition, **kwargs))
         return self
-
-    def exclude(self, source_field_path : FieldPath):
-        """ Removes particular field paths. """
-        pass
 
     def select(self, *selectors : List[Selector]):
         """ Selects a particular source field as a field in the current root. """
@@ -247,10 +148,6 @@ class Query(functions.Function):
                 assert len(selector) is 2
                 self._commands.append(Command.as_selector(selector[0], selector[1]))
         return self
-
-    def __call__(self, **kwargs):
-        """ A derivation must also be callable since it is possible it is also used as a Transformer! """
-        return Apply(self, **kwargs)
 
     _counter = 1
     @property
