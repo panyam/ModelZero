@@ -93,76 +93,87 @@ class CommandProcessor(CaseMatcher):
             cloned_field.optional = field.optional or optional
             curr_record.register_field(name, cloned_field)
 
-class Query(exprs.Function):
+class Query(exprs.FuncExpr):
     def __init__(self, fqn = None, **input_types : Dict[str, types.Type]):
-        super().__init__()
-        self._inputs = {k: exprs.ensure_type(v) for k, v in input_types.items()}
-        self._return_type = None
+        super().__init__(fqn, **input_types)
         self._func_type = None
         self._commands : List[Union[Selector, Fragment]] = []
-        self._fqn = None
-        self._name = None
-        if fqn and fqn.strip():
-            parts = [f.strip() for f in fqn.split(".") if f.strip()]
-            self._fqn = ".".join(parts)
-            self._name = parts[-1]
-
-    @property
-    def name(self): return self._name
-
-    @property
-    def fqn(self): return self._fqn
-
-    @property
-    def num_inputs(self): return len(self._inputs)
-
-    @property
-    def input(self):
-        k = list(self._inputs.keys())[0]
-        return k,self._inputs[k]
-
-    def get_input(self, name : str) -> types.Type:
-        return self._inputs[name]
 
     def include(self, query : "Query", **kwargs : Dict[str, "Expr"]):
         """ Includes one or all fields from the source type at the root level
         of this query
         """
-        self._commands.append(Command.as_fragment(query, **kwargs))
-        return self
+        return self.add_command(Command.as_fragment(query, **kwargs))
 
     def include_if(self, condition : "Expr", query : "Query", **kwargs : Dict[str, "Expr"]):
-        self._commands.append(Command.as_fragment(query, condition, **kwargs))
-        return self
+        return self.add_command(Command.as_fragment(query, condition, **kwargs))
 
     def select(self, *selectors : List[Selector]):
         """ Selects a particular source field as a field in the current root. """
         for selector in selectors:
             if type(selector) is str:
-                self._commands.append(Command.as_selector(selector))
+                self.add_command(Command.as_selector(selector))
             elif type(selector) is tuple:
                 assert len(selector) is 2
-                self._commands.append(Command.as_selector(selector[0], selector[1]))
+                self.add_command(Command.as_selector(selector[0], selector[1]))
+        return self
+
+    def add_command(self, cmd):
+        self._commands.append(cmd)
+        self._body_updated = True
         return self
 
     _counter = 1
-    @property
-    def func_type(self):
-        """ Returns the type that corresponds the result of the derivations """
-        if self._return_type is None:
-            self._return_type = types.Type()
-            self._func_type = types.Type.as_func_type(self._inputs, self._return_type)
-            classdict = dict(__fqn__ = self.fqn)
-            name = self.name
-            if not name:
-                name = f"Derivation_{self._counter}"
-                self.__class__._counter += 1
-                classdict["__fqn__"] = name
-            rec_class = types.RecordType.new_record_class(name, **classdict)
-            rec_type = types.RecordType(rec_class)
-            self._return_type.record_type = rec_type
+    def infer_body_type(self):
+        # update the body here
+        classdict = dict(__fqn__ = self.fqn)
+        name = self.name
+        if not name:
+            name = f"Derivation_{self._counter}"
+            self.__class__._counter += 1
+            classdict["__fqn__"] = name
+        record_class = types.RecordType.new_record_class(name, **classdict)
+        self.record_type = types.RecordType(record_class)
+        self._body_type.record_type = self.record_type
+        for command in self._commands:
+            CommandProcessor()(command, record_class, [self])
 
-            # now add fields from each command
-            for command in self._commands:
-                CommandProcessor()(command, rec_class, [self])
-        return self._func_type
+        # We have our body type, we still need an "expression" that corresponds
+        # to the body of this query.  The return type is a record instance
+        # where the values are "collected" from the child values (recursively).
+        # Ultimately what is needed is returning:
+        #
+        # new(RecordType, [(key,value) tuples])
+        # 
+        # where each key is the field of the record and value is another 
+        # "expression" corresponding to how it is fetched.
+        root = exprs.Expr.as_new(self._body_type, [])
+        for command in self._commands:
+            NewMaker()(command, self._body_type, root, [self])
+
+class NewMaker(CaseMatcher):
+    __caseon__ = Command
+
+    @case("selector")
+    def processSelector(self, selector : Selector,
+                        curr_type : types.Type,
+                        curr_object : exprs.Expr,
+                        query_stack : List["Query"]):
+        source_value = selector.source_value
+        if source_value is None:
+            # we are doing a field copy
+            curr_query = query_stack[0]
+            if curr_query.num_inputs == 1:
+                inname,intype = curr_query.input
+                source_value = exprs.Expr.as_fpath([inname, selector.target_name])
+            else:
+                source_value = exprs.Expr.as_fpath(selector.target_name)
+        curr_object.children.append((selector.target_name, source_value))
+
+    @case("fragment")
+    def processFragment(self, fragment : Fragment,
+                        curr_type : types.Type,
+                        curr_object : exprs.Expr,
+                        query_stack : List["Query"]):
+        for command in fragment.query._commands:
+            self(command, curr_type, curr_object, query_stack)

@@ -6,7 +6,7 @@ from ipdb import set_trace
 from modelzero.core.resources import BaseResource
 from modelzero.utils import get_param 
 from modelzero.core import types
-from modelzero.core import functions
+from modelzero.core import exprs
 from modelzero.core.custom_types import *
 
 class API(object):
@@ -61,7 +61,7 @@ class Router(object):
 
 class Method(object):
     def __init__(self, method_or_fqn, *args, **kwargs):
-        self.function = functions.NativeFunction(method_or_fqn)
+        self.function = exprs.NativeFunc(method_or_fqn)
         self.success_method = None
         self.error_method = None
         self.done_method = None
