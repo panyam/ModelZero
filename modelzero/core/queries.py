@@ -157,10 +157,6 @@ class Query(exprs.Func):
             self._eval_return_type([])
         return self._inferred_return_type
 
-    @inferred_return_type.setter
-    def inferred_return_type(self, value):
-        self._inferred_return_type = None
-
     _counter = 1
     def _eval_return_type(self, query_stack : List["Query"]) -> types.Type:
         classdict = dict(__fqn__ = self.fqn)

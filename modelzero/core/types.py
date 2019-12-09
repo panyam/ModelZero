@@ -70,6 +70,10 @@ class OpaqueType(object):
         self._name = name
         self._native_type = native_type
 
+    def __eq__(self, another):
+        if type(another) != OpaqueType: return False
+        return self.name == another.name
+
     @property
     def name(self): return self._name
 

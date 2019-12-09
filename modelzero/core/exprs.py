@@ -58,7 +58,7 @@ class Function(object):
         self.annotated_input_types = {}
         self.inferred_input_types = {}
         self.annotated_return_type = None
-        self.inferred_return_type = None
+        self.set_inferred_return_type(None)
 
     @property
     def fqn(self): return self._fqn
@@ -89,6 +89,13 @@ class Function(object):
 
     def has_input(self, name : str):
         return self.input_type(name) is not None
+
+    @property
+    def inferred_return_type(self):
+        return self._inferred_return_type
+
+    def set_inferred_return_type(self, value):
+        self._inferred_return_type = value
 
     def set_annotated_input_type(self, inname : str, intype : types.Type):
         self.annotated_input_types[inname] = intype
@@ -194,7 +201,7 @@ class NativeFunc(Function):
 
     def analyse_function(self):
         self.inspected_sig = signature(self._func)
-        self.inferred_return_type = ensure_type(self.inspected_sig.return_annotation)
+        self.set_inferred_return_type(ensure_type(self.inspected_sig.return_annotation))
 
         self.inferred_input_types = {}
         for name,param in self.inspected_sig.parameters.items():
