@@ -1,19 +1,25 @@
 
 from ipdb import set_trace
 from typing import List, Union, Dict, Tuple
-from modelzero.core import types, functions
-from modelzero.core import exprs
+from modelzero.core import types, exprs, env
 from modelzero.core.records import Record, Field
 from taggedunion import Variant
 from taggedunion import Union as TUnion, CaseMatcher, case
 
+class FieldPath(object):
+    def __init__(self, value : Union[str, List[str]]):
+        if type(value) is str:
+            value = [v.strip() for v in value.split("/") if v.strip()]
+        self.parts = value
+
+    def __getitem__(self, index):
+        return self.parts[index]
+
 class Selector(object):
     """ Commands that projects a particular field into a source field. """
-    def __init__(self, name : str, source : "Expr" = None):
+    def __init__(self, name : str, source : "Expr"):
         self.target_name = name
-        if source:
-            source = exprs.ensure_expr(source)
-        self.source_value = source
+        self.source_value = exprs.ensure_expr(source)
 
 class Fragment(object):
     def __init__(self, query, condition : "Expr" = None, **kwargs):
@@ -21,9 +27,16 @@ class Fragment(object):
         self.condition = exprs.ensure_expr(condition)
         self.kwargs = {k:exprs.ensure_expr(v) for k,v in kwargs.items()}
 
+class Bind(object):
+    def __init__(self, name : str, source : "Expr", functor : "Expr"):
+        self.target_name = name
+        self.functor = exprs.ensure_expr(functor)
+        self.source_value = exprs.ensure_expr(source)
+
 class Command(TUnion):
     selector = Variant(Selector)
     fragment = Variant(Fragment)
+    # binder = Variant(Bind)
 
 class CommandProcessor(CaseMatcher):
     __caseon__ = Command
@@ -32,20 +45,12 @@ class CommandProcessor(CaseMatcher):
     def processSelector(self, selector : Selector,
                         curr_record : Record,
                         query_stack : List["Query"]):
-        source_type = None
         source_value = selector.source_value
-        if source_value is None:
-            from modelzero.core.exprs import Expr
-            curr_query = query_stack[0]
-            if curr_query.num_inputs == 1:
-                inname,intype = curr_query.input
-                source_value = Expr.as_fpath([inname, selector.target_name])
-            else:
-                source_value = Expr.as_fpath(selector.target_name)
-        source_type = exprs.TypeOf()(source_value, query_stack)
+        assert source_value is not None
 
         # See if this already exists and if types match - then OK
         rmeta = curr_record.__record_metadata__
+        source_type = exprs.TypeInfer()(source_value, query_stack)
         if selector.target_name in rmeta:
             field = rmeta[selector.target_name]
             curr_type = field.logical_type
@@ -82,22 +87,34 @@ class CommandProcessor(CaseMatcher):
         # Finally if there is a type mismatch (or casting is not possible)
         # It is an error.
         for name,expr in fragment.kwargs.items():
-            expr_type = exprs.TypeOf()(expr, query_stack)
-            param_type = fragment.query.param(name)
+            expr_type = exprs.TypeInfer()(expr, query_stack)
+            param_type = fragment.query.input_type(name)
             if expr_type != param_type:
                 optional = True
                 break
-        query_rec = fragment.query.func_type.return_type.record_class
+        query_rec = fragment.query.return_type.record_class
         for name, field in query_rec.__record_metadata__.items():
             cloned_field = field.clone()
             cloned_field.optional = field.optional or optional
             curr_record.register_field(name, cloned_field)
 
-class Query(exprs.FuncExpr):
+def InQuery(fqn = None, **input_types : Dict[str, types.Type]):
+    out = Query(fqn, **input_types)
+    out._is_inline = True
+    return out
+
+class Query(exprs.Func):
     def __init__(self, fqn = None, **input_types : Dict[str, types.Type]):
-        super().__init__(fqn, **input_types)
-        self._func_type = None
+        super().__init__(fqn)
+        for inname,intype in input_types.items():
+            self.add_input(inname, intype)
+            self.set_inferred_input_type(inname, intype)
+        self._is_inline = False
         self._commands : List[Union[Selector, Fragment]] = []
+        self._inferred_return_type = None
+
+    @property
+    def is_inline(self): return self._is_inline
 
     def include(self, query : "Query", **kwargs : Dict[str, "Expr"]):
         """ Includes one or all fields from the source type at the root level
@@ -112,7 +129,17 @@ class Query(exprs.FuncExpr):
         """ Selects a particular source field as a field in the current root. """
         for selector in selectors:
             if type(selector) is str:
-                self.add_command(Command.as_selector(selector))
+                # we are doing a field copy
+                if self.num_inputs == 1:
+                    inname = list(self.input_names)[0]
+                    intype = self.input_type(inname)
+                    getter = exprs.Expr.as_getter(
+                            exprs.Expr.as_var(inname),
+                            selector)
+                else:
+                    set_trace()
+                    # source_value = exprs.Expr.as_fpath(selector.target_name)
+                self.add_command(Command.as_selector(selector, getter))
             elif type(selector) is tuple:
                 assert len(selector) is 2
                 self.add_command(Command.as_selector(selector[0], selector[1]))
@@ -120,12 +147,22 @@ class Query(exprs.FuncExpr):
 
     def add_command(self, cmd):
         self._commands.append(cmd)
-        self._body_updated = True
+        self._inferred_return_type = None
+        self._func_expr = None
         return self
 
+    @property
+    def inferred_return_type(self):
+        if self._inferred_return_type is None:
+            self._eval_return_type([])
+        return self._inferred_return_type
+
+    @inferred_return_type.setter
+    def inferred_return_type(self, value):
+        self._inferred_return_type = None
+
     _counter = 1
-    def infer_body_type(self):
-        # update the body here
+    def _eval_return_type(self, query_stack : List["Query"]) -> types.Type:
         classdict = dict(__fqn__ = self.fqn)
         name = self.name
         if not name:
@@ -133,23 +170,28 @@ class Query(exprs.FuncExpr):
             self.__class__._counter += 1
             classdict["__fqn__"] = name
         record_class = types.RecordType.new_record_class(name, **classdict)
-        self.record_type = types.RecordType(record_class)
-        self._body_type.record_type = self.record_type
+        self._inferred_return_type = types.Type.as_record_type(record_class)
+        query_stack.append(self)
         for command in self._commands:
-            CommandProcessor()(command, record_class, [self])
+            CommandProcessor()(command, record_class, query_stack)
+        query_stack.pop()
 
-        # We have our body type, we still need an "expression" that corresponds
-        # to the body of this query.  The return type is a record instance
-        # where the values are "collected" from the child values (recursively).
-        # Ultimately what is needed is returning:
-        #
-        # new(RecordType, [(key,value) tuples])
-        # 
-        # where each key is the field of the record and value is another 
-        # "expression" corresponding to how it is fetched.
-        root = exprs.Expr.as_new(self._body_type, [])
+    @property
+    def func_expr(self):
+        if self._func_expr is None:
+            if self.is_inline:
+                set_trace()
+                assert False, "func_expr can only be evalled for non-inlined queries"
+            self._eval_func_expr([self])
+        return self._func_expr
+
+    def _eval_func_expr(self, query_stack : List["Query"]) -> exprs.Expr:
+        root = exprs.Expr.as_new(self.return_type, [])
         for command in self._commands:
-            NewMaker()(command, self._body_type, root, [self])
+            NewMaker()(command, self.return_type, root, query_stack)
+        self._func_expr = exprs.Expr.as_func(self.fqn, self._inputs,
+                                             root,
+                                             self.record_type)
 
 class NewMaker(CaseMatcher):
     __caseon__ = Command
@@ -159,16 +201,7 @@ class NewMaker(CaseMatcher):
                         curr_type : types.Type,
                         curr_object : exprs.Expr,
                         query_stack : List["Query"]):
-        source_value = selector.source_value
-        if source_value is None:
-            # we are doing a field copy
-            curr_query = query_stack[0]
-            if curr_query.num_inputs == 1:
-                inname,intype = curr_query.input
-                source_value = exprs.Expr.as_fpath([inname, selector.target_name])
-            else:
-                source_value = exprs.Expr.as_fpath(selector.target_name)
-        curr_object.children.append((selector.target_name, source_value))
+        curr_object.children.append((selector.target_name, selector.source_value))
 
     @case("fragment")
     def processFragment(self, fragment : Fragment,

@@ -8,7 +8,43 @@ from typing import List, Union, Dict, Tuple
 from taggedunion import Variant
 from taggedunion import Union as TUnion, CaseMatcher, case
 
-class Func(object):
+
+class Var(object):
+    def __init__(self, name):
+        if type(name) is not str:
+            set_trace()
+        self.name = name
+
+    def printables(self):
+        yield 0, "var %s" % self.name
+
+    def __eq__(self, another):
+        return self.name == another.name
+
+    def __repr__(self):
+        return "<Var(%s)>" % self.name
+
+class TupleExpr(object):
+    def __init__(self, *children):
+        self.children = list(children)
+
+    def printables(self):
+        yield 0, "Tuple:"
+        for c in self.children:
+            yield 1, c.printables()
+
+    def __eq__(self, another):
+        if len(self.children) != len(another.children):
+            return False
+        for e1,e2 in zip(self.children, another.children):
+            if e1 != e2: return False
+        return True
+
+    def __repr__(self):
+        return "<Tuple(%s)>" % ", ".join(map(repr, self.children))
+
+class Function(object):
+    """ Base Function interface. """
     def __init__(self, fqn = None):
         self._param_default_values = {}
         self._fqn = None
@@ -17,6 +53,12 @@ class Func(object):
             parts = [f.strip() for f in fqn.split(".") if f.strip()]
             self._fqn = ".".join(parts)
             self._name = parts[-1]
+        self._func_type = None
+        self.input_names = set()
+        self.annotated_input_types = {}
+        self.inferred_input_types = {}
+        self.annotated_return_type = None
+        self.inferred_return_type = None
 
     @property
     def fqn(self): return self._fqn
@@ -30,63 +72,111 @@ class Func(object):
     def set_default_value(self, param_name, value):
         self._param_default_values[param_name] = value
 
-    @property
-    def return_type2(self): return self.func_type.return_type
-    def has_param(self, name): return name in self.func_type.param_types
-    def param(self, name): return self.func_type.param_types[name]
-    @property
-    def param_names(self): return self.func_type.param_types.keys()
-
-    # Helper methods to create a "call" binding
-    def call(self, **kwargs): return self(**kwargs) 
-    def __call__(self, **kwargs):
-        """ A derivation must also be callable since it is possible it is also used as a Transformer! """
-        return Expr.as_apply(self, **kwargs)
-
-class FuncExpr(Func):
-    """ A function expression with an expression body that can be evaluated. """
-    def __init__(self, fqn = None, **input_types : Dict[str, types.Type]):
-        super().__init__(fqn)
-        self._inputs = {k: ensure_type(v) for k, v in input_types.items()}
-        self._body = None
-        self._body_type = types.Type()
-
-    def set_body(self, body : "Expr"):
-        self._body = body
-        self._body_updated = True
+    def add_input(self, inname : str, intype : types.Type = None):
+        self._func_type = None
+        self.input_names.add(inname)
+        self.annotated_input_types[inname] = ensure_type(intype)
+        self.inferred_input_types[inname] = None
+        return self
 
     @property
-    def num_inputs(self): return len(self._inputs)
+    def body(self) -> "Expr":
+        """ Returns the body expression of the function. """
+        return None
 
     @property
-    def input(self):
-        k = list(self._inputs.keys())[0]
-        return k,self._inputs[k]
+    def num_inputs(self): return len(self.input_names)
 
-    def get_input(self, name : str) -> types.Type:
-        return self._inputs[name]
+    def has_input(self, name : str):
+        return self.input_type(name) is not None
+
+    def set_annotated_input_type(self, inname : str, intype : types.Type):
+        self.annotated_input_types[inname] = intype
+        return self
+
+    def set_inferred_input_type(self, inname : str, intype : types.Type):
+        self.inferred_input_types[inname] = intype
+        return self
+
+    def annotated_input_type(self, inname : str) -> types.Type:
+        return self.annotated_input_types.get(inname, None)
+
+    def inferred_input_type(self, inname : str) -> types.Type:
+        return self.inferred_input_types.get(inname, None)
+
+    def input_type(self, inname : str) -> types.Type:
+        out = self.annotated_input_type(inname) or \
+                self.inferred_input_type(inname)
+        if not out:
+            raise Exception(f"Input type '{inname}' is neither annotated or inferred")
+        return out
 
     @property
-    def body_type(self):
-        if self._body_updated:
-            # Update body_type
-            self._body_updated = False
-            self.infer_body_type()
-            self._body_updated = False
-        return self._body_type
+    def return_type(self):
+        return self.func_type.return_type
 
-    def infer_body_type(self):
-        """ Kicks off inference of the body's type """
-        to_be_implemented()
+    def input_type(self, inname : str) -> types.Type:
+        out = self.annotated_input_type(inname) or \
+                self.inferred_input_type(inname)
+        if not out:
+            raise Exception(f"Return type is neither annotated or inferred")
+        return out
+
+    @property
+    def annotated_type(self):
+        if self.annotated_return_type is None:
+            return None
+        for name in self.input_names:
+            if self.annotated_input_type(name) is None: return None
+        return types.Type.as_func_type(self.annotated_input_types,
+                                       self.annotated_return_type)
+
+
+    @property
+    def inferred_type(self):
+        if self.inferred_return_type is None:
+            return None
+        for name in self.input_names:
+            if self.inferred_input_type(name) is None: return None
+        return types.Type.as_func_type(self.inferred_input_types,
+                                       self.inferred_return_type)
 
     @property
     def func_type(self):
         """ Returns the type that corresponds the result of the derivations """
         if self._func_type is None:
-            self._func_type = types.Type.as_func_type(self._inputs, self.body_type)
+            self._func_type = self.annotated_type or self.inferred_type
+        if not self._func_type:
+            set_trace()
+            raise Exception("Function type has neither been annotated nor inferred")
         return self._func_type
 
-class NativeFunc(Func):
+    # Helper methods to create a "call" expression
+    def call(self, **kwargs): return self(**kwargs) 
+    def __call__(self, **kwargs):
+        """ A derivation must also be callable since it is possible it is also used as a Transformer! """
+        return Expr.as_call(self, **kwargs)
+
+class Func(Function):
+    """ A function expression with an expression body that can be evaluated. """
+    def __init__(self, fqn = None,
+                 params : List[Union[str, Tuple[str, types.Type]]] = None,
+                 body : "Expr" = None):
+        super().__init__(fqn)
+        for x in params or []: 
+            if type(x) is tuple:
+                pname,ptype = x
+            else:
+                pname,ptype = x,None
+            self.add_input(pname, ptype)
+        self._body = body
+
+    @property
+    def body(self) -> "Expr":
+        """ Returns the body expression of the function. """
+        return self._body
+
+class NativeFunc(Function):
     """ Funcs that are "external" and not directly evaluatable by our executors. Typical system functions. """
     def __init__(self, func_or_fqn : Union[str, "function"],
                  annotated_type : types.Type = None):
@@ -97,33 +187,26 @@ class NativeFunc(Func):
             self._func = func_or_fqn
             self._name = func_or_fqn.__name__
         super().__init__(f"{self._func.__module__}.{self._name}")
-        self.annotated_type = annotated_type
-        self.inspected_sig = signature(self._func)
-        self._inspected_type = None
+        self.analyse_function()
 
     @property
     def target(self): return self._func
 
-    @property
-    def func_type(self):
-        if not self._inspected_type:
-            return_type = ensure_type(self.inspected_sig.return_annotation)
+    def analyse_function(self):
+        self.inspected_sig = signature(self._func)
+        self.inferred_return_type = ensure_type(self.inspected_sig.return_annotation)
 
-            param_types = {}
-            for name,param in self.inspected_sig.parameters.items():
-                # Ensure all required fields are covered in the API call
-                if param.default is not inspect._empty:
-                    self._param_default_values[name] = param.default
-                param_types[name] = None
-                if param.annotation and param.annotation is not inspect._empty:
-                    annot = param.annotation
-                    param_types[name] = ensure_type(annot)
-            self._inspected_type = types.Type.as_func_type(param_types, return_type)
-
-        if self.annotated_type:
-            # Ensure there are no inconsistencies
-            set_trace()
-        return self._inspected_type
+        self.inferred_input_types = {}
+        for name,param in self.inspected_sig.parameters.items():
+            if param.default is not inspect._empty:
+                self._param_default_values[name] = param.default
+            self.inferred_input_types[name] = None
+            if param.annotation and param.annotation is not inspect._empty:
+                self.input_names.add(name)
+                annot = param.annotation
+                self.inferred_input_types[name] = ensure_type(annot)
+            elif param.default is inspect._empty:   # since not optional - add it so type inference will fail unless annotated
+                self.input_names.add(name)
 
 class New(object):
     def __init__(self, obj_type, children):
@@ -134,37 +217,83 @@ class Literal(object):
     def __init__(self, value):
         self.value = value
 
-class FieldPath(object):
-    def __init__(self, value : typing.Union[str, typing.List[str]]):
-        if type(value) is str:
-            value = [v.strip() for v in value.split("/") if v.strip()]
-        self.parts = value
+class Getter(object):
+    def __init__(self,source : "Expr", key : str):
+        self.source_expr = source
+        self.key = key
 
-    def __getitem__(self, index):
-        return self.parts[index]
+    def printables(self):
+        yield 0, "Getter"
+        yield 1, "Source:"
+        yield 2, self.source_expr.printables()
+        yield 1, "Key:"
+        yield 2, self.key
 
 class FMap(object):
     def __init__(self, func_expr : "Expr", source_expr : "Expr"):
         self.func_expr = ensure_expr(func_expr)
         self.source_expr = ensure_expr(source_expr)
 
-class Apply(object):
-    def __init__(self, func_expr : Union[str, "Func"],
-                 **kwargs_exprs : Dict[str, "Expr"]):
-        assert issubclass(func_expr.__class__, Func)
-        self.func_expr = ensure_expr(func_expr)
-        self.kwargs_exprs = {k:ensure_expr(v) for k,v in kwargs_exprs.items()}
+class Call(object):
+    def __init__(self, operator : Union[str, "Function"],
+                 **kwargs : Dict[str, "Expr"]):
+        assert issubclass(operator.__class__, Function)
+        self.operator = ensure_expr(operator)
+        self.kwargs = {k:ensure_expr(v) for k,v in kwargs.items()}
+
+    def printables(self):
+        yield 0, "Call"
+        yield 1, "Operator:"
+        yield 2, self.operator.printables()
+        yield 1, "Args:"
+        for argname,argexpr in self.kwargs.items():
+            yield 2, argname, " = ", argexpr.printables()
+
+    def __eq__(self, another):
+        if self.operator != another.operator:
+            return False
+        if len(self.kwargs) != len(another.kwargs):
+            return False
+        for e1,e2 in zip(self.kwargs, another.kwargs):
+            if e1 != e2:
+                return False
+        return True
+
+    def __repr__(self):
+        return "<Call (%s) in %s" % (self.operator, ", ".join(map(repr, self.arguments)))
 
 class Expr(TUnion):
     new = Variant("New")
+    var = Variant(Var)
     fmap = Variant("FMap")
-    apply = Variant("Apply")
-    fpath = Variant("FieldPath")
-    func = Variant("FuncExpr")
+    call = Variant("Call")
+    getter = Variant(Getter)
+    func = Variant("Func")
     nfunc = Variant("NativeFunc")
     literal = Variant("Literal")
 
-class TypeOf(CaseMatcher):
+    @property
+    def annotated_type(self):
+        if self._variant_value: return self._variant_value.annotated_type
+        else: return None
+
+    @property
+    def inferred_type(self):
+        if self._variant_value: return self._variant_value.inferred_type
+        else: return None
+
+    @annotated_type.setter
+    def annotated_type(self, value):
+        self._variant_value.annotated_type = value
+
+    @inferred_type.setter
+    def inferred_type(self, value):
+        self._variant_value.inferred_type = value
+
+    def printables(self):
+        yield 0, self.variant_value.printables()
+
+class TypeInfer(CaseMatcher):
     __caseon__ = Expr
 
     @case("fmap")
@@ -182,22 +311,22 @@ class TypeOf(CaseMatcher):
     def typeOfNew(self, new, query_stack : List["Query"]):
         return new.obj_type
 
-    @case("apply")
-    def typeOfApply(self, apply, query_stack : List["Query"]):
-        return self(apply.func_expr, query_stack)
+    @case("var")
+    def typeOfVar(self, var : Var, query_stack : List["Query"]):
+        for query in query_stack:
+            if query.has_input(var.name):
+                return query.input_type(var.name)
 
-    @case("fpath")
-    def typeOfFieldPath(self, fpath : FieldPath, query_stack : List["Query"]):
-        hitquery = None
-        for q in query_stack:
-            if q.has_param(fpath[0]):
-                hitquery = q
-                break
-        if hitquery is None:
-            raise Exception(f"Field path start variable '{fpath[0]}' not an input to any query")
+    @case("call")
+    def typeOfCall(self, call, query_stack : List["Query"]):
+        return self(call.operator, query_stack)
 
-        param = q.param(fpath[0])
-        return param.type_for_field_path(*fpath.parts[1:])
+    @case("getter")
+    def typeOfGetter(self, getter : Getter, query_stack : List["Query"]):
+        source_type = self(getter.source_expr, query_stack)
+        rec_class = source_type.record_type.record_class
+        field = rec_class.__record_metadata__[getter.key]
+        return field.logical_type
 
     @case("literal")
     def typeOfLiteral(self, literal, query_stack : List["Query"]):
@@ -248,13 +377,21 @@ def ensure_expr(input):
     if T is Expr: return input
     out = Expr()
     if T is FMap: out.fmap = input
-    elif T is Apply: out.apply = input
-    elif issubclass(T, FuncExpr): out.func = input
+    elif T is Call: out.call = input
+    elif issubclass(T, Func): out.func = input
     elif issubclass(T, NativeFunc): out.nfunc = input
-    elif T is FieldPath: out.fpath = input
     elif T is str and input[0] == "$":
-        # create field path
-        out.fpath = FieldPath(input[1:])
+        parts = input[1:].split("/")
+        if len(parts) == 1:
+            out.var = Var(parts[0])
+        else:
+            getter = None
+            for part in parts:
+                if getter is None:
+                    getter = Expr.as_var(parts[0])
+                else:
+                    getter = Expr.as_getter(getter, part)
+            return getter
     else:
         if T not in (str, int, bool, float, tuple, list):
             set_trace()
@@ -271,13 +408,18 @@ class Eval(CaseMatcher):
         set_trace()
         return new.obj_type
 
-    @case("apply")
-    def execApply(self, apply, env):
+    @case("var")
+    def execVar(self, var : str, query_stack : List["Query"]):
         set_trace()
-        if apply.func_expr.is_nfunc:
+        pass
+
+    @case("call")
+    def execCall(self, call, env):
+        set_trace()
+        if call.func_expr.is_nfunc:
             # Native function - call it?
             pass
-        elif apply.func_expr.is_func:
+        elif call.func_expr.is_func:
             pass
         else:
             assert False, "Invalid function type"
@@ -287,8 +429,8 @@ class Eval(CaseMatcher):
         set_trace()
         pass
 
-    @case("fpath")
-    def execFieldPath(self, fpath, env):
+    @case("getter")
+    def execGetter(self, getter : Getter, query_stack : List["Query"]):
         set_trace()
         pass
 
