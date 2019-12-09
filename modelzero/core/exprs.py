@@ -2,7 +2,7 @@
 from ipdb import set_trace
 import inspect
 from inspect import signature
-from modelzero.core import types
+from modelzero.core import types,bp
 import typing, inspect
 from typing import List, Union, Dict, Tuple
 from taggedunion import Variant
@@ -59,6 +59,9 @@ class Function(object):
         self.inferred_input_types = {}
         self.annotated_return_type = None
         self.set_inferred_return_type(None)
+
+    def printables(self):
+        yield 0, f"Function: {self.fqn}"
 
     @property
     def fqn(self): return self._fqn
@@ -220,9 +223,18 @@ class New(object):
         self.obj_type = obj_type
         self.children = children
 
+    def printables(self):
+        yield 0, f"New: {self.obj_type}"
+        yield 1, "Children:"
+        for c in self.children:
+            yield 2, c.printables()
+
 class Literal(object):
     def __init__(self, value):
         self.value = value
+
+    def printables(self):
+        yield 0, f"Lit: {self.value}"
 
 class Getter(object):
     def __init__(self,source : "Expr", key : str):

@@ -1,7 +1,7 @@
 
 from ipdb import set_trace
 from typing import List, Union, Dict, Tuple
-from modelzero.core import types, exprs, env
+from modelzero.core import types, exprs, env, bp
 from modelzero.core.records import Record, Field
 from taggedunion import Variant
 from taggedunion import Union as TUnion, CaseMatcher, case
@@ -105,6 +105,9 @@ def InQuery(fqn = None, **input_types : Dict[str, types.Type]):
 
 class Query(exprs.Func):
     def __init__(self, fqn = None, **input_types : Dict[str, types.Type]):
+        if not fqn:
+            fqn = f"Derivation_{self._counter}"
+            self.__class__._counter += 1
         super().__init__(fqn)
         for inname,intype in input_types.items():
             self.add_input(inname, intype)
@@ -112,6 +115,7 @@ class Query(exprs.Func):
         self._is_inline = False
         self._commands : List[Union[Selector, Fragment]] = []
         self._inferred_return_type = None
+        self._func_body = None
 
     @property
     def is_inline(self): return self._is_inline
@@ -148,7 +152,7 @@ class Query(exprs.Func):
     def add_command(self, cmd):
         self._commands.append(cmd)
         self._inferred_return_type = None
-        self._func_expr = None
+        self._func_body = None
         return self
 
     @property
@@ -161,10 +165,6 @@ class Query(exprs.Func):
     def _eval_return_type(self, query_stack : List["Query"]) -> types.Type:
         classdict = dict(__fqn__ = self.fqn)
         name = self.name
-        if not name:
-            name = f"Derivation_{self._counter}"
-            self.__class__._counter += 1
-            classdict["__fqn__"] = name
         record_class = types.RecordType.new_record_class(name, **classdict)
         self._inferred_return_type = types.Type.as_record_type(record_class)
         query_stack.append(self)
@@ -173,36 +173,29 @@ class Query(exprs.Func):
         query_stack.pop()
 
     @property
-    def func_expr(self):
-        if self._func_expr is None:
+    def body(self):
+        if self._func_body is None:
+            self._func_body = exprs.Expr.as_new(self.return_type, [])
             if self.is_inline:
                 set_trace()
-                assert False, "func_expr can only be evalled for non-inlined queries"
-            self._eval_func_expr([self])
-        return self._func_expr
+                assert False, "func_body can only be evalled for non-inlined queries"
+            self._eval_func_body([self])
+        return self._func_body
 
-    def _eval_func_expr(self, query_stack : List["Query"]) -> exprs.Expr:
-        root = exprs.Expr.as_new(self.return_type, [])
+    def _eval_func_body(self, query_stack : List["Query"]) -> exprs.Expr:
         for command in self._commands:
-            NewMaker()(command, self.return_type, root, query_stack)
-        self._func_expr = exprs.Expr.as_func(self.fqn, self._inputs,
-                                             root,
-                                             self.record_type)
+            NewMaker()(command, query_stack)
 
 class NewMaker(CaseMatcher):
     __caseon__ = Command
 
     @case("selector")
-    def processSelector(self, selector : Selector,
-                        curr_type : types.Type,
-                        curr_object : exprs.Expr,
-                        query_stack : List["Query"]):
+    def processSelector(self, selector : Selector, query_stack : List["Query"]):
+        curr_query = query_stack[0]
+        curr_object = curr_query._func_body.new
         curr_object.children.append((selector.target_name, selector.source_value))
 
     @case("fragment")
-    def processFragment(self, fragment : Fragment,
-                        curr_type : types.Type,
-                        curr_object : exprs.Expr,
-                        query_stack : List["Query"]):
+    def processFragment(self, fragment : Fragment, query_stack : List["Query"]):
         for command in fragment.query._commands:
-            self(command, curr_type, curr_object, query_stack)
+            self(command, query_stack)
