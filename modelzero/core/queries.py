@@ -17,18 +17,18 @@ class FieldPath(object):
 
 class Selector(object):
     """ Commands that projects a particular field into a source field. """
-    def __init__(self, name : str, source : "Expr"):
+    def __init__(self, name : str, source : "Exp"):
         self.target_name = name
         self.source_value = exprs.ensure_expr(source)
 
 class Fragment(object):
-    def __init__(self, query, condition : "Expr" = None, **kwargs):
+    def __init__(self, query : "Query", condition : "Exp" = None, **kwargs):
         self.query = query
         self.condition = exprs.ensure_expr(condition)
         self.kwargs = {k:exprs.ensure_expr(v) for k,v in kwargs.items()}
 
 class Bind(object):
-    def __init__(self, name : str, source : "Expr", functor : "Expr"):
+    def __init__(self, name : str, source : "Exp", functor : "Exp"):
         self.target_name = name
         self.functor = exprs.ensure_expr(functor)
         self.source_value = exprs.ensure_expr(source)
@@ -103,7 +103,7 @@ def InQuery(fqn = None, **input_types : Dict[str, types.Type]):
     out._is_inline = True
     return out
 
-class Query(exprs.Func):
+class Query(exprs.Function):
     def __init__(self, fqn = None, **input_types : Dict[str, types.Type]):
         if not fqn:
             fqn = f"Derivation_{self._counter}"
@@ -120,13 +120,13 @@ class Query(exprs.Func):
     @property
     def is_inline(self): return self._is_inline
 
-    def include(self, query : "Query", **kwargs : Dict[str, "Expr"]):
+    def include(self, query : "Query", **kwargs : Dict[str, "Exp"]):
         """ Includes one or all fields from the source type at the root level
         of this query
         """
         return self.add_command(Command.as_fragment(query, **kwargs))
 
-    def include_if(self, condition : "Expr", query : "Query", **kwargs : Dict[str, "Expr"]):
+    def include_if(self, condition : "Exp", query : "Query", **kwargs : Dict[str, "Exp"]):
         return self.add_command(Command.as_fragment(query, condition, **kwargs))
 
     def select(self, *selectors : List[Selector]):
@@ -137,12 +137,12 @@ class Query(exprs.Func):
                 if self.num_inputs == 1:
                     inname = list(self.input_names)[0]
                     intype = self.input_type(inname)
-                    getter = exprs.Expr.as_getter(
-                            exprs.Expr.as_var(inname),
+                    getter = exprs.Exp.as_getter(
+                            exprs.Exp.as_var(inname),
                             selector)
                 else:
                     set_trace()
-                    # source_value = exprs.Expr.as_fpath(selector.target_name)
+                    # source_value = exprs.Exp.as_fpath(selector.target_name)
                 self.add_command(Command.as_selector(selector, getter))
             elif type(selector) is tuple:
                 assert len(selector) is 2
@@ -175,27 +175,75 @@ class Query(exprs.Func):
     @property
     def body(self):
         if self._func_body is None:
-            self._func_body = exprs.Expr.as_new(self.return_type, [])
             if self.is_inline:
                 set_trace()
                 assert False, "func_body can only be evalled for non-inlined queries"
             self._eval_func_body([self])
         return self._func_body
 
-    def _eval_func_body(self, query_stack : List["Query"]) -> exprs.Expr:
-        for command in self._commands:
-            NewMaker()(command, query_stack)
+    def _eval_func_body(self, query_stack : List["Query"]) -> exprs.Exp:
+        self._func_body = exprs.Exp.as_new(self.return_type)
+        for index,command in enumerate(self._commands):
+            result = AttrSetter(command, self._func_body, query_stack)
+            self._func_body = result.value
 
-class NewMaker(CaseMatcher):
+class AttrSetter(CaseMatcher):
     __caseon__ = Command
 
     @case("selector")
-    def processSelector(self, selector : Selector, query_stack : List["Query"]):
-        curr_query = query_stack[0]
-        curr_object = curr_query._func_body.new
-        curr_object.children.append((selector.target_name, selector.source_value))
+    def processSelector(self, selector : Selector,
+                        expr : exprs.Exp,
+                        query_stack : List["Query"]):
+        return exprs.Exp.as_setter(expr,
+                                   **{selector.target_name: selector.source_value})
 
     @case("fragment")
-    def processFragment(self, fragment : Fragment, query_stack : List["Query"]):
-        for command in fragment.query._commands:
-            self(command, query_stack)
+    def processFragment(self, fragment : Fragment,
+                        expr : exprs.Exp,
+                        query_stack : List["Query"]):
+        # Need let expression here!!!
+        """
+        need to return something like:
+
+        we need a "let_if a := ???
+                          b := ???
+                          c := ???
+                          d := ???
+                          in
+                          body
+                    else
+                        else body
+                    end
+
+        or:
+
+        if and([or(not fragment.condition, fragment.condition()),
+                v1 is typeof(k1)
+                v2 is typeof(k2)
+                ....
+                vn is typeof(kn)])
+            exp = AttrSetter(AttrSetter(AttrSetter(exp1, cm1), cm2)...., cmdn)
+        else
+            exp
+        end
+        """
+        elsebody = expr
+        ifbody = expr
+        for index,command in enumerate(fragment.query._commands):
+            result = AttrSetter(command, ifbody, query_stack)
+            ifbody = result.value
+        conds = []
+        if fragment.condition:
+            conds.append(fragment.condition)
+
+        for arg,argval in fragment.kwargs.items():
+            if fragment.query.has_input(arg):
+                argtype = fragment.query.input_type(arg)
+                conds.append(exprs.Exp.as_istype(argval, argtype))
+        # compute the expressions corresponding to conditions for this include
+        if not conds: return ifbody
+
+        ifcond, conds = conds[0], conds[1:]
+        for cond in conds:
+            ifcond = exprs.Exp.as_andexp(ifcond, cond)
+        return exprs.Exp.as_ifelse(ifcond, ifbody, elsebody)

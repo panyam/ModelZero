@@ -2,12 +2,11 @@
 from ipdb import set_trace
 import inspect
 from inspect import signature
-from modelzero.core import types,bp
+from modelzero.core import types,bp,records
 import typing, inspect
 from typing import List, Union, Dict, Tuple
 from taggedunion import Variant
 from taggedunion import Union as TUnion, CaseMatcher, case
-
 
 class Var(object):
     def __init__(self, name):
@@ -24,7 +23,23 @@ class Var(object):
     def __repr__(self):
         return "<Var(%s)>" % self.name
 
-class TupleExpr(object):
+class Ref(object):
+    """ This expression both captures a reference to a cell as well as a reference to a variable. """
+    def __init__(self, expr_or_var):
+        self.expr = expr_or_var
+
+    @property
+    def is_var(self):
+        return type(self.expr) is str
+
+    def printables(self):
+        yield 0, "Ref:"
+        yield 1, self.expr.printables()
+
+    def __eq__(self, another):
+        return self.expr == another.expr
+
+class TupleExp(object):
     def __init__(self, *children):
         self.children = list(children)
 
@@ -43,8 +58,103 @@ class TupleExpr(object):
     def __repr__(self):
         return "<Tuple(%s)>" % ", ".join(map(repr, self.children))
 
+class Let(object):
+    def __init__(self, **mappings: Dict[str, "Exp"]):
+        self.mappings = mappings
+        self.set_body(None)
+
+    def set_body(self, body: "Exp") -> "Let":
+        self.body = body
+        return self
+
+    def printables(self):
+        yield 0, "Let:"
+        for k,v in self.mappings.items():
+            yield 2, "%s = " % k
+            yield 3, v.printables()
+        yield 1, "in:"
+        yield 2, self.body.printables()
+
+    def __eq__(self, another):
+        return  len(self.mappings) == len(another.mappings) and \
+                all(k in another.mappings and 
+                    self.mappings[k] == another.mappings[k] 
+                        for k in self.mappings.keys()) and \
+                self.body == another.body
+
+    def __repr__(self):
+        return "<Let (%s) in %s" % (", ".join(("%s = %s" % k,repr(v)) for k,v in self.mappings.items()), repr(self.body))
+
+class Or(object):
+    def __init__(self, exp1: "Exp", exp2: "Exp"):
+        self.exp1 = exp1
+        self.exp2 = exp2
+
+    def printables(self):
+        yield 0, "Or:"
+        yield 1, "Exp1"
+        yield 2, self.exp1.printables()
+        yield 1, "Exp2"
+        yield 2, self.exp2.printables()
+
+    def __eq__(self, another):
+        return  self.exp1 == another.exp1 and \
+                self.exp2 == another.exp2
+
+    def __repr__(self):
+        return "<Or(%s, %s)>" % (str(self.exp1), str(self.exp2))
+
+class And(object):
+    def __init__(self, exp1: "Exp", exp2: "Exp"):
+        self.exp1 = exp1
+        self.exp2 = exp2
+
+    def printables(self):
+        yield 0, "And:"
+        yield 1, "Exp1"
+        yield 2, self.exp1.printables()
+        yield 1, "Exp2"
+        yield 2, self.exp2.printables()
+
+    def __eq__(self, another):
+        return  self.exp1 == another.exp1 and \
+                self.exp2 == another.exp2
+
+    def __repr__(self):
+        return "<And(%s, %s)>" % (str(self.exp1), str(self.exp2))
+
+class IfElse(object):
+    def __init__(self, cond: "Exp", exp1: "Exp", exp2: "Exp"):
+        self.cond = cond
+        self.exp1 = exp1
+        self.exp2 = exp2
+
+    def printables(self):
+        yield 0, "If:"
+        yield 1, "Cond"
+        yield 2, self.cond.printables()
+        yield 1, "Then"
+        yield 2, self.exp1.printables()
+        yield 1, "Else"
+        yield 2, self.exp2.printables()
+
+    def __eq__(self, another):
+        return  self.cond == another.cond and \
+                self.exp1 == another.exp1 and \
+                self.exp2 == another.exp2
+
+    def __repr__(self):
+        return "<If(%s) { %s } else { %s }>" % (str(self.cond), str(self.exp1), str(self.exp2))
+
 class Function(object):
     """ Base Function interface. """
+
+    class BoundFunc(object):
+        """ A function statically bounded to an environment. """
+        def __init__(self, func, env):
+            self.func = func
+            self.env = env
+
     def __init__(self, fqn = None):
         self._param_default_values = {}
         self._fqn = None
@@ -60,6 +170,9 @@ class Function(object):
         self.annotated_return_type = None
         self.set_inferred_return_type(None)
 
+    def bind(self, env):
+        return Function.BoundFunc(self, env)
+
     def printables(self):
         yield 0, f"Function: {self.fqn}"
 
@@ -72,10 +185,13 @@ class Function(object):
     def has_default_value(self, param_name):
         return param_name in self._param_default_values
 
+    def get_default_value(self, param_name):
+        return self._param_default_values[param_name]
+
     def set_default_value(self, param_name, value):
         self._param_default_values[param_name] = value
 
-    def add_input(self, inname : str, intype : types.Type = None):
+    def add_input(self, inname: str, intype: types.Type = None):
         self._func_type = None
         self.input_names.add(inname)
         self.annotated_input_types[inname] = ensure_type(intype)
@@ -83,14 +199,14 @@ class Function(object):
         return self
 
     @property
-    def body(self) -> "Expr":
+    def body(self) -> "Exp":
         """ Returns the body expression of the function. """
         return None
 
     @property
     def num_inputs(self): return len(self.input_names)
 
-    def has_input(self, name : str):
+    def has_input(self, name: str):
         return self.input_type(name) is not None
 
     @property
@@ -100,21 +216,21 @@ class Function(object):
     def set_inferred_return_type(self, value):
         self._inferred_return_type = value
 
-    def set_annotated_input_type(self, inname : str, intype : types.Type):
+    def set_annotated_input_type(self, inname: str, intype: types.Type):
         self.annotated_input_types[inname] = intype
         return self
 
-    def set_inferred_input_type(self, inname : str, intype : types.Type):
+    def set_inferred_input_type(self, inname: str, intype: types.Type):
         self.inferred_input_types[inname] = intype
         return self
 
-    def annotated_input_type(self, inname : str) -> types.Type:
+    def annotated_input_type(self, inname: str) -> types.Type:
         return self.annotated_input_types.get(inname, None)
 
-    def inferred_input_type(self, inname : str) -> types.Type:
+    def inferred_input_type(self, inname: str) -> types.Type:
         return self.inferred_input_types.get(inname, None)
 
-    def input_type(self, inname : str) -> types.Type:
+    def input_type(self, inname: str) -> types.Type:
         out = self.annotated_input_type(inname) or \
                 self.inferred_input_type(inname)
         if not out:
@@ -125,7 +241,7 @@ class Function(object):
     def return_type(self):
         return self.func_type.return_type
 
-    def input_type(self, inname : str) -> types.Type:
+    def input_type(self, inname: str) -> types.Type:
         out = self.annotated_input_type(inname) or \
                 self.inferred_input_type(inname)
         if not out:
@@ -165,13 +281,13 @@ class Function(object):
     def call(self, **kwargs): return self(**kwargs) 
     def __call__(self, **kwargs):
         """ A derivation must also be callable since it is possible it is also used as a Transformer! """
-        return Expr.as_call(self, **kwargs)
+        return Exp.as_call(self, **kwargs)
 
 class Func(Function):
     """ A function expression with an expression body that can be evaluated. """
     def __init__(self, fqn = None,
-                 params : List[Union[str, Tuple[str, types.Type]]] = None,
-                 body : "Expr" = None):
+                 params: List[Union[str, Tuple[str, types.Type]]] = None,
+                 body: "Exp" = None):
         super().__init__(fqn)
         for x in params or []: 
             if type(x) is tuple:
@@ -182,7 +298,7 @@ class Func(Function):
         self._body = body
 
     @property
-    def body(self) -> "Expr":
+    def body(self) -> "Exp":
         """ Returns the body expression of the function. """
         return self._body
 
@@ -196,13 +312,17 @@ class NativeFunc(Function):
         else:
             self._func = func_or_fqn
             self._name = func_or_fqn.__name__
+        self._body = Native(self._func)
         super().__init__(f"{self._func.__module__}.{self._name}")
         self.analyse_function()
 
     @property
-    def target(self): return self._func
+    def body(self) -> "Native":
+        """ Returns the body expression of the function. """
+        return self._body
 
     def analyse_function(self):
+        """ Analyses the native function to extract type signature and defaults. """
         self.inspected_sig = signature(self._func)
         self.set_inferred_return_type(ensure_type(self.inspected_sig.return_annotation))
 
@@ -219,25 +339,35 @@ class NativeFunc(Function):
                 self.input_names.add(name)
 
 class New(object):
-    def __init__(self, obj_type, children):
+    def __init__(self, obj_type):
         self.obj_type = obj_type
-        self.children = children
 
     def printables(self):
         yield 0, f"New: {self.obj_type}"
-        yield 1, "Children:"
-        for c in self.children:
-            yield 2, c.printables()
 
-class Literal(object):
+    def __eq__(self, another: "New"):
+        return self.obj_type == another.obj_type
+
+class Native(object):
+    """ Native value expressions. """
     def __init__(self, value):
+        T = type(value)
+        if T not in (str, int, bool, float, tuple, list) and \
+                not callable(value) and \
+                not issubclass(T, records.Record) and \
+                value is not None:
+            set_trace()
+            assert False
         self.value = value
+
+    def matches_type(self, target_type):
+        return issubclass(self.value.__class__, target_type.record_class)
 
     def printables(self):
         yield 0, f"Lit: {self.value}"
 
 class Getter(object):
-    def __init__(self,source : "Expr", key : str):
+    def __init__(self,source: "Exp", key: str):
         self.source_expr = source
         self.key = key
 
@@ -248,15 +378,35 @@ class Getter(object):
         yield 1, "Key:"
         yield 2, self.key
 
+class Setter(object):
+    def __init__(self, source: "Exp", **keys_and_values: Dict[str, "Exp"]):
+        self.source_expr = source
+        self.keys_and_values = keys_and_values
+
+    def printables(self):
+        yield 0, "Setter"
+        yield 1, "Source:"
+        yield 2, self.source_expr.printables()
+        yield 1, "Key:"
+        yield 2, self.key
+        yield 1, "New Value:"
+        yield 2, self.value
+
+class IsType(object):
+    def __init__(self, expr: "Exp", type_or_expr: Union["Exp", "Type"]):
+        self.expr = expr
+        self.type_or_expr = type_or_expr
+
 class FMap(object):
-    def __init__(self, func_expr : "Expr", source_expr : "Expr"):
+    def __init__(self, func_expr: "Exp", source_expr: "Exp"):
         self.func_expr = ensure_expr(func_expr)
         self.source_expr = ensure_expr(source_expr)
 
 class Call(object):
-    def __init__(self, operator : Union[str, "Function"],
-                 **kwargs : Dict[str, "Expr"]):
-        assert issubclass(operator.__class__, Function)
+    def __init__(self, operator: Union[str, "Function", "Exp"],
+                 **kwargs: Dict[str, "Exp"]):
+        if issubclass(operator.__class__, Function):
+            operator = Exp(func = operator)
         self.operator = ensure_expr(operator)
         self.kwargs = {k:ensure_expr(v) for k,v in kwargs.items()}
 
@@ -281,15 +431,26 @@ class Call(object):
     def __repr__(self):
         return "<Call (%s) in %s" % (self.operator, ", ".join(map(repr, self.arguments)))
 
-class Expr(TUnion):
-    new = Variant("New")
+class Exp(TUnion):
+    new = Variant(New)
+    let = Variant(Let)
     var = Variant(Var)
-    fmap = Variant("FMap")
-    call = Variant("Call")
+    ref = Variant(Ref)
+    orexp = Variant(Or)
+    andexp = Variant(And)
+    istype = Variant(IsType)
+    ifelse = Variant(IfElse)
+    fmap = Variant(FMap)
+    call = Variant(Call)
     getter = Variant(Getter)
-    func = Variant("Func")
-    nfunc = Variant("NativeFunc")
-    literal = Variant("Literal")
+    setter = Variant(Setter)
+    func = Variant(Function)
+    native = Variant(Native)
+
+    # Helper methods to create a "call" expression
+    def __call__(self, **kwargs):
+        """ A derivation must also be callable since it is possible it is also used as a Transformer! """
+        return Exp.as_call(self, **kwargs)
 
     @property
     def annotated_type(self):
@@ -313,10 +474,10 @@ class Expr(TUnion):
         yield 0, self.variant_value.printables()
 
 class TypeInfer(CaseMatcher):
-    __caseon__ = Expr
+    __caseon__ = Exp
 
     @case("fmap")
-    def typeOfFMap(self, fmap, query_stack : List["Query"]):
+    def typeOfFMap(self, fmap, query_stack: List["Query"]):
         func_expr_type = self(fmap.func_expr, query_stack)
         source_type = self(fmap.source_expr, query_stack)
         if not source_type:
@@ -327,43 +488,72 @@ class TypeInfer(CaseMatcher):
         return origin_type[func_expr_type]
 
     @case("new")
-    def typeOfNew(self, new, query_stack : List["Query"]):
+    def typeOfNew(self, new, query_stack: List["Query"]):
         return new.obj_type
 
+    @case("andexp")
+    def typeOfAnd(self, andexp, query_stack: List["Query"]):
+        from modelzero.core.custom_types import MZTypes
+        return MZTypes.Bool
+
+    @case("orexp")
+    def typeOfOr(self, orexp, query_stack: List["Query"]):
+        from modelzero.core.custom_types import MZTypes
+        return MZTypes.Bool
+
+    @case("istype")
+    def typeOfIsType(self, istype, query_stack: List["Query"]):
+        from modelzero.core.custom_types import MZTypes
+        return MZTypes.Bool
+
+    @case("ifelse")
+    def typeOfIfElse(self, ifelse, query_stack: List["Query"]):
+        set_trace()
+        pass
+
     @case("var")
-    def typeOfVar(self, var : Var, query_stack : List["Query"]):
+    def typeOfVar(self, var: Var, query_stack: List["Query"]):
         for query in query_stack:
             if query.has_input(var.name):
                 return query.input_type(var.name)
+        assert False
+
+    @case("ref")
+    def typeOfRef(self, ref: Ref, query_stack: List["Query"]):
+        set_trace()
+        assert False
 
     @case("call")
-    def typeOfCall(self, call, query_stack : List["Query"]):
+    def typeOfCall(self, call, query_stack: List["Query"]):
         return self(call.operator, query_stack)
 
     @case("getter")
-    def typeOfGetter(self, getter : Getter, query_stack : List["Query"]):
+    def typeOfGetter(self, getter: Getter, query_stack: List["Query"]):
         source_type = self(getter.source_expr, query_stack)
         rec_class = source_type.record_type.record_class
         field = rec_class.__record_metadata__[getter.key]
         return field.logical_type
 
-    @case("literal")
-    def typeOfLiteral(self, literal, query_stack : List["Query"]):
+    @case("setter")
+    def typeOfSetter(self, setter: Setter, query_stack: List["Query"]):
+        source_type = self(setter.source_expr, query_stack)
+        return source_type
+
+    @case("native")
+    def typeOfNative(self, native, query_stack: List["Query"]):
         breakpoint()
-        pass
+
+    @case("let")
+    def typeOfLet(self, let, query_stack: List["Query"]):
+        breakpoint()
 
     @case("func")
-    def typeOfFunc(self, func_expr, query_stack : List["Query"]):
+    def typeOfFunc(self, func_expr, query_stack: List["Query"]):
         return func_expr.func_type.return_type
-
-    @case("nfunc")
-    def typeOfNativeFunc(self, native_func, query_stack : List["Query"]):
-        return native_func.func_type.return_type
 
 def ensure_type(t):
     if t in (None, inspect._empty):
         return None
-    from modelzero.core import types
     from modelzero.core.custom_types import MZTypes
     if t is str:
         return MZTypes.String
@@ -380,9 +570,8 @@ def ensure_type(t):
             if len(t.__args__) == 2 and type(None) in t.__args__:
                 optional_of = t.__args__[0] or t.__args__[1]
                 return MZTypes.Optional[ensure_type(optional_of)]
-            else:
-                children = [ensure_type(ta) for ta in t.__args__]
-                return types.Type.as_sum_type(None, *children)
+            children = [ensure_type(ta) for ta in t.__args__]
+            return types.Type.as_sum_type(None, *children)
         set_trace()
         a = 3
     try:
@@ -391,78 +580,26 @@ def ensure_type(t):
         raise exc
 
 def ensure_expr(input):
-    if input is None: return None
+    if input is None: return Exp(native = Native(None))
     T = type(input)
-    if T is Expr: return input
-    out = Expr()
-    if T is FMap: out.fmap = input
-    elif T is Call: out.call = input
-    elif issubclass(T, Func): out.func = input
-    elif issubclass(T, NativeFunc): out.nfunc = input
+    if T is Exp: return input
+    if T is FMap: return Exp(fmap = input)
+    elif T is Call: Exp(call = input)
+    elif issubclass(T, Function): return Exp(func = input)
     elif T is str and input[0] == "$":
         parts = input[1:].split("/")
         if len(parts) == 1:
-            out.var = Var(parts[0])
+            return Exp(var = Var(parts[0]))
         else:
             getter = None
             for part in parts:
                 if getter is None:
-                    getter = Expr.as_var(parts[0])
+                    getter = Exp.as_var(parts[0])
                 else:
-                    getter = Expr.as_getter(getter, part)
+                    getter = Exp.as_getter(getter, part)
             return getter
     else:
-        if T not in (str, int, bool, float, tuple, list):
-            set_trace()
-            assert False
-        out.literal = Literal(input)
-    return out
+        return Exp(native = Native(input))
 
-class Eval(CaseMatcher):
-    """ Super class for expression evaluators. """
-    __caseon__ = Expr
-
-    @case("new")
-    def execNew(self, new, env):
-        set_trace()
-        return new.obj_type
-
-    @case("var")
-    def execVar(self, var : str, query_stack : List["Query"]):
-        set_trace()
-        pass
-
-    @case("call")
-    def execCall(self, call, env):
-        set_trace()
-        if call.func_expr.is_nfunc:
-            # Native function - call it?
-            pass
-        elif call.func_expr.is_func:
-            pass
-        else:
-            assert False, "Invalid function type"
-
-    @case("fmap")
-    def execFMap(self, fmap, env):
-        set_trace()
-        pass
-
-    @case("getter")
-    def execGetter(self, getter : Getter, query_stack : List["Query"]):
-        set_trace()
-        pass
-
-    @case("literal")
-    def execLiteral(self, literal, env):
-        return literal.value
-
-    @case("func")
-    def execFunc(self, func_expr, env):
-        set_trace()
-        return literal.value
-
-    @case("nfunc")
-    def execNativeFunc(self, native_func, env):
-        set_trace()
-        return literal.value
+def load_func(func_or_fqn):
+    return Exp(func = NativeFunc(func_or_fqn))
