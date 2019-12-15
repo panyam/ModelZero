@@ -24,7 +24,7 @@ class Selector(object):
 class Fragment(object):
     def __init__(self, query : "Query", condition : "Exp" = None, **kwargs):
         self.query = query
-        self.condition = exprs.ensure_expr(condition)
+        self.condition = None if not condition else exprs.ensure_expr(condition)
         self.kwargs = {k:exprs.ensure_expr(v) for k,v in kwargs.items()}
 
 class Bind(object):
@@ -228,22 +228,25 @@ class AttrSetter(CaseMatcher):
         end
         """
         elsebody = expr
-        ifbody = expr
-        for index,command in enumerate(fragment.query._commands):
-            result = AttrSetter(command, ifbody, query_stack)
-            ifbody = result.value
-        conds = []
-        if fragment.condition:
-            conds.append(fragment.condition)
-
+        # Create the actual let body that applies the fragment
+        let_mappings = {}
+        let_body_conds = []
         for arg,argval in fragment.kwargs.items():
             if fragment.query.has_input(arg):
                 argtype = fragment.query.input_type(arg)
-                conds.append(exprs.Exp.as_istype(argval, argtype))
-        # compute the expressions corresponding to conditions for this include
-        if not conds: return ifbody
+                let_mappings[arg] = argval
+                let_body_conds.append(exprs.Exp.as_istype(argval, argtype))
 
-        ifcond, conds = conds[0], conds[1:]
-        for cond in conds:
-            ifcond = exprs.Exp.as_andexp(ifcond, cond)
-        return exprs.Exp.as_ifelse(ifcond, ifbody, elsebody)
+        setter_body = expr
+        for index,command in enumerate(fragment.query._commands):
+            result = AttrSetter(command, setter_body, query_stack)
+            setter_body = result.value
+        ifcond = exprs.Exp.as_andexp(let_body_conds)
+        let_body = exprs.Exp.as_ifelse(ifcond, setter_body, elsebody)
+        let = exprs.Exp.as_let(**let_mappings).set_body(let_body)
+
+        if not fragment.condition:
+            return let
+
+        # if we have a condition wrap the let in a conditional and return that
+        return exprs.Exp.as_ifelse(fragment.condition, let, elsebody)

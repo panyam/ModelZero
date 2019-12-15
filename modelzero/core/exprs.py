@@ -14,9 +14,6 @@ class Var(object):
             set_trace()
         self.name = name
 
-    def printables(self):
-        yield 0, "var %s" % self.name
-
     def __eq__(self, another):
         return self.name == another.name
 
@@ -32,21 +29,12 @@ class Ref(object):
     def is_var(self):
         return type(self.expr) is str
 
-    def printables(self):
-        yield 0, "Ref:"
-        yield 1, self.expr.printables()
-
     def __eq__(self, another):
         return self.expr == another.expr
 
 class TupleExp(object):
     def __init__(self, *children):
         self.children = list(children)
-
-    def printables(self):
-        yield 0, "Tuple:"
-        for c in self.children:
-            yield 1, c.printables()
 
     def __eq__(self, another):
         if len(self.children) != len(another.children):
@@ -67,14 +55,6 @@ class Let(object):
         self.body = body
         return self
 
-    def printables(self):
-        yield 0, "Let:"
-        for k,v in self.mappings.items():
-            yield 2, "%s = " % k
-            yield 3, v.printables()
-        yield 1, "in:"
-        yield 2, self.body.printables()
-
     def __eq__(self, another):
         return  len(self.mappings) == len(another.mappings) and \
                 all(k in another.mappings and 
@@ -83,60 +63,44 @@ class Let(object):
                 self.body == another.body
 
     def __repr__(self):
-        return "<Let (%s) in %s" % (", ".join(("%s = %s" % k,repr(v)) for k,v in self.mappings.items()), repr(self.body))
+        mappings = ", ".join(f"{k} = {repr(v)}" for k,v in self.mappings.items())
+        return f"<Let {mappings} in {repr(self.body)}"
 
 class Or(object):
-    def __init__(self, exp1: "Exp", exp2: "Exp"):
-        self.exp1 = exp1
-        self.exp2 = exp2
-
-    def printables(self):
-        yield 0, "Or:"
-        yield 1, "Exp1"
-        yield 2, self.exp1.printables()
-        yield 1, "Exp2"
-        yield 2, self.exp2.printables()
+    def __init__(self, *exprs: List["Exp"]):
+        self.exprs = exprs
 
     def __eq__(self, another):
-        return  self.exp1 == another.exp1 and \
-                self.exp2 == another.exp2
+        return  self.exprs == another.exprs
 
     def __repr__(self):
-        return "<Or(%s, %s)>" % (str(self.exp1), str(self.exp2))
+        return "<Or(%s)>" % ",".join(map(str, self.exprs))
+
+class Not(object):
+    def __init__(self, expr: "Exp"):
+        self.expr = expr
+
+    def __eq__(self, another):
+        return  self.expr == another.expr
+
+    def __repr__(self):
+        return "<Not(%s)>" % str(self.expr)
 
 class And(object):
-    def __init__(self, exp1: "Exp", exp2: "Exp"):
-        self.exp1 = exp1
-        self.exp2 = exp2
-
-    def printables(self):
-        yield 0, "And:"
-        yield 1, "Exp1"
-        yield 2, self.exp1.printables()
-        yield 1, "Exp2"
-        yield 2, self.exp2.printables()
+    def __init__(self, *exprs: List["Exp"]):
+        self.exprs = exprs
 
     def __eq__(self, another):
-        return  self.exp1 == another.exp1 and \
-                self.exp2 == another.exp2
+        return  self.exprs == another.exprs
 
     def __repr__(self):
-        return "<And(%s, %s)>" % (str(self.exp1), str(self.exp2))
+        return "<And(%s)>" % ",".join(map(str, self.exprs))
 
 class IfElse(object):
     def __init__(self, cond: "Exp", exp1: "Exp", exp2: "Exp"):
         self.cond = cond
         self.exp1 = exp1
         self.exp2 = exp2
-
-    def printables(self):
-        yield 0, "If:"
-        yield 1, "Cond"
-        yield 2, self.cond.printables()
-        yield 1, "Then"
-        yield 2, self.exp1.printables()
-        yield 1, "Else"
-        yield 2, self.exp2.printables()
 
     def __eq__(self, another):
         return  self.cond == another.cond and \
@@ -172,9 +136,6 @@ class Function(object):
 
     def bind(self, env):
         return Function.BoundFunc(self, env)
-
-    def printables(self):
-        yield 0, f"Function: {self.fqn}"
 
     @property
     def fqn(self): return self._fqn
@@ -234,6 +195,7 @@ class Function(object):
         out = self.annotated_input_type(inname) or \
                 self.inferred_input_type(inname)
         if not out:
+            set_trace()
             raise Exception(f"Input type '{inname}' is neither annotated or inferred")
         return out
 
@@ -241,12 +203,14 @@ class Function(object):
     def return_type(self):
         return self.func_type.return_type
 
+    """
     def input_type(self, inname: str) -> types.Type:
         out = self.annotated_input_type(inname) or \
                 self.inferred_input_type(inname)
         if not out:
             raise Exception(f"Return type is neither annotated or inferred")
         return out
+    """
 
     @property
     def annotated_type(self):
@@ -256,7 +220,6 @@ class Function(object):
             if self.annotated_input_type(name) is None: return None
         return types.Type.as_func_type(self.annotated_input_types,
                                        self.annotated_return_type)
-
 
     @property
     def inferred_type(self):
@@ -342,9 +305,6 @@ class New(object):
     def __init__(self, obj_type):
         self.obj_type = obj_type
 
-    def printables(self):
-        yield 0, f"New: {self.obj_type}"
-
     def __eq__(self, another: "New"):
         return self.obj_type == another.obj_type
 
@@ -363,34 +323,15 @@ class Native(object):
     def matches_type(self, target_type):
         return issubclass(self.value.__class__, target_type.record_class)
 
-    def printables(self):
-        yield 0, f"Lit: {self.value}"
-
 class Getter(object):
     def __init__(self,source: "Exp", key: str):
         self.source_expr = source
         self.key = key
 
-    def printables(self):
-        yield 0, "Getter"
-        yield 1, "Source:"
-        yield 2, self.source_expr.printables()
-        yield 1, "Key:"
-        yield 2, self.key
-
 class Setter(object):
     def __init__(self, source: "Exp", **keys_and_values: Dict[str, "Exp"]):
         self.source_expr = source
         self.keys_and_values = keys_and_values
-
-    def printables(self):
-        yield 0, "Setter"
-        yield 1, "Source:"
-        yield 2, self.source_expr.printables()
-        yield 1, "Key:"
-        yield 2, self.key
-        yield 1, "New Value:"
-        yield 2, self.value
 
 class IsType(object):
     def __init__(self, expr: "Exp", type_or_expr: Union["Exp", "Type"]):
@@ -409,14 +350,6 @@ class Call(object):
             operator = Exp(func = operator)
         self.operator = ensure_expr(operator)
         self.kwargs = {k:ensure_expr(v) for k,v in kwargs.items()}
-
-    def printables(self):
-        yield 0, "Call"
-        yield 1, "Operator:"
-        yield 2, self.operator.printables()
-        yield 1, "Args:"
-        for argname,argexpr in self.kwargs.items():
-            yield 2, argname, " = ", argexpr.printables()
 
     def __eq__(self, another):
         if self.operator != another.operator:
@@ -438,6 +371,7 @@ class Exp(TUnion):
     ref = Variant(Ref)
     orexp = Variant(Or)
     andexp = Variant(And)
+    notexp = Variant(Not)
     istype = Variant(IsType)
     ifelse = Variant(IfElse)
     fmap = Variant(FMap)
@@ -470,9 +404,6 @@ class Exp(TUnion):
     def inferred_type(self, value):
         self._variant_value.inferred_type = value
 
-    def printables(self):
-        yield 0, self.variant_value.printables()
-
 class TypeInfer(CaseMatcher):
     __caseon__ = Exp
 
@@ -490,6 +421,11 @@ class TypeInfer(CaseMatcher):
     @case("new")
     def typeOfNew(self, new, query_stack: List["Query"]):
         return new.obj_type
+
+    @case("notexp")
+    def typeOfNot(self, notexp, query_stack: List["Query"]):
+        from modelzero.core.custom_types import MZTypes
+        return MZTypes.Bool
 
     @case("andexp")
     def typeOfAnd(self, andexp, query_stack: List["Query"]):

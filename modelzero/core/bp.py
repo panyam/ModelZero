@@ -20,17 +20,17 @@ def debug(checkvar = None):
         print("BP Condition hit: %s" % checkvar)
         set_trace()
 
-def indent(level): return "  " * level
+def funcprint(func, writer = None):
+    from modelzero.core.printers import Writer, PrettyPrinter
+    pp = PrettyPrinter()
+    writer = writer or Writer()
+    pp.eprintFuncDecl(func, writer)
+    return writer
 
-def eprint(expr):
+def eprint(expr, writer = None):
     """ Pretty prints an expression. """
-    val = expr.variant_value 
-    eprint_helper(val.printables())
-
-def eprint_helper(printables, depth = 0):
-    for level, printable in printables:
-        if type(printable) is str:
-            print(indent(depth + level) + printable)
-        else:
-            eprint_helper(printable, depth + level)
-
+    from modelzero.core.printers import Writer, PrettyPrinter
+    pp = PrettyPrinter()
+    writer = writer or Writer()
+    pp(expr, writer)
+    return writer
