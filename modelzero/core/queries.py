@@ -235,15 +235,20 @@ class AttrSetter(CaseMatcher):
             if fragment.query.has_input(arg):
                 argtype = fragment.query.input_type(arg)
                 let_mappings[arg] = argval
-                let_body_conds.append(exprs.Exp.as_istype(argval, argtype))
+                argvar = exprs.Exp.as_var(arg)
+                let_body_conds.append(exprs.Exp.as_istype(argvar, argtype))
 
         setter_body = expr
         for index,command in enumerate(fragment.query._commands):
             result = AttrSetter(command, setter_body, query_stack)
             setter_body = result.value
-        ifcond = exprs.Exp.as_andexp(let_body_conds)
+        if len(let_body_conds) == 1:
+            ifcond = let_body_conds[0]
+        else:
+            ifcond = exprs.Exp.as_andexp(*let_body_conds)
         let_body = exprs.Exp.as_ifelse(ifcond, setter_body, elsebody)
-        let = exprs.Exp.as_let(**let_mappings).set_body(let_body)
+        let = exprs.Exp.as_let(**let_mappings)
+        let.let.set_body(let_body)
 
         if not fragment.condition:
             return let

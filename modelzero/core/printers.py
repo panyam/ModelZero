@@ -94,10 +94,10 @@ class PrettyPrinter(CaseMatcher):
         writer.writeln("let")
         with writer.indent():
             for var,expr in let.mappings.items():
-                writer.write(f"{var.name} = ")
+                writer.write(f"{var} = ")
                 self(expr, writer)
                 writer.nextline()
-        writer.write("in ")
+        writer.writeln("in ")
         with writer.indent():
             self(let.body, writer)
 
@@ -148,7 +148,7 @@ class PrettyPrinter(CaseMatcher):
     def eprintAndExp(self, andexp: exprs.And, writer) -> exprs.Native:
         writer.write("(")
         with writer.indent():
-            for index,expr in andexp.exprs:
+            for index,expr in enumerate(andexp.exprs):
                 if index > 0: writer.write(" and ")
                 self(expr, writer)
         writer.write(")")
@@ -157,7 +157,7 @@ class PrettyPrinter(CaseMatcher):
     def eprintOrExp(self, orexp: exprs.Or, writer) -> exprs.Native:
         writer.write("(")
         with writer.indent():
-            for index,expr in orexp.exprs:
+            for index,expr in enumerate(orexp.exprs):
                 if index > 0: writer.write(" or ")
                 self(expr, writer)
         writer.write(")")
