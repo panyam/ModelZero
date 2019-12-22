@@ -86,8 +86,8 @@ class Writer:
         self.value += indent
 
 class PrettyPrinter(CaseMatcher):
-    """ Expression pretty printer. """
-    __caseon__ = exprs.Exp
+    """ Exprression pretty printer. """
+    __caseon__ = exprs.Expr
 
     @case("let")
     def eprintLet(self, let: exprs.Let, writer) -> exprs.Native:
@@ -106,7 +106,7 @@ class PrettyPrinter(CaseMatcher):
         writer.write("(")
         self(istype.expr, writer)
         writer.write(" isa ")
-        if issubclass(istype.type_or_expr.__class__, exprs.Exp):
+        if issubclass(istype.type_or_expr.__class__, exprs.Expr):
             self(istype.type_or_expr, writer)
         else:
             writer.write("T?")
@@ -139,13 +139,13 @@ class PrettyPrinter(CaseMatcher):
         writer.writeln("}")
 
     @case("notexp")
-    def eprintNotExp(self, notexp: exprs.Not, writer) -> exprs.Native:
+    def eprintNotExpr(self, notexp: exprs.Not, writer) -> exprs.Native:
         writer.write("(not ")
         self(notexp.expr, writer)
         writer.write(")")
 
     @case("andexp")
-    def eprintAndExp(self, andexp: exprs.And, writer) -> exprs.Native:
+    def eprintAndExpr(self, andexp: exprs.And, writer) -> exprs.Native:
         writer.write("(")
         with writer.indent():
             for index,expr in enumerate(andexp.exprs):
@@ -154,7 +154,7 @@ class PrettyPrinter(CaseMatcher):
         writer.write(")")
 
     @case("orexp")
-    def eprintOrExp(self, orexp: exprs.Or, writer) -> exprs.Native:
+    def eprintOrExpr(self, orexp: exprs.Or, writer) -> exprs.Native:
         writer.write("(")
         with writer.indent():
             for index,expr in enumerate(orexp.exprs):
@@ -195,12 +195,12 @@ class PrettyPrinter(CaseMatcher):
 
     @case("getter")
     def eprintGetter(self, getter: exprs.Getter, writer) -> exprs.Native:
-        self(getter.source_expr, writer)
+        self(getter.src_expr, writer)
         writer.write(f".{getter.key}")
 
     @case("setter")
     def eprintSetter(self, setter: exprs.Setter, writer) -> exprs.Native:
-        self(setter.source_expr, writer)
+        self(setter.src_expr, writer)
         with writer.indent():
             for key,value in setter.keys_and_values.items():
                 writer.write(f".set({key}, ")

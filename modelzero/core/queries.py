@@ -16,22 +16,22 @@ class FieldPath(object):
         return self.parts[index]
 
 class Selector(object):
-    """ Commands that projects a particular field into a source field. """
-    def __init__(self, name : str, source : "Exp"):
+    """ Commands that projects a particular field into a src field. """
+    def __init__(self, name : str, src : "Expr"):
         self.target_name = name
-        self.source_value = exprs.ensure_expr(source)
+        self.src_value = exprs.ensure_expr(src)
 
 class Fragment(object):
-    def __init__(self, query : "Query", condition : "Exp" = None, **kwargs):
+    def __init__(self, query : "Query", condition : "Expr" = None, **kwargs):
         self.query = query
         self.condition = None if not condition else exprs.ensure_expr(condition)
         self.kwargs = {k:exprs.ensure_expr(v) for k,v in kwargs.items()}
 
 class Bind(object):
-    def __init__(self, name : str, source : "Exp", functor : "Exp"):
+    def __init__(self, name : str, src : "Expr", functor : "Expr"):
         self.target_name = name
         self.functor = exprs.ensure_expr(functor)
-        self.source_value = exprs.ensure_expr(source)
+        self.src_value = exprs.ensure_expr(src)
 
 class Command(TUnion):
     selector = Variant(Selector)
@@ -45,18 +45,18 @@ class CommandProcessor(CaseMatcher):
     def processSelector(self, selector : Selector,
                         curr_record : Record,
                         query_stack : List["Query"]):
-        source_value = selector.source_value
-        assert source_value is not None
+        src_value = selector.src_value
+        assert src_value is not None
 
         # See if this already exists and if types match - then OK
         rmeta = curr_record.__record_metadata__
-        source_type = exprs.TypeInfer()(source_value, query_stack)
+        src_type = exprs.TypeInfer()(src_value, query_stack)
         if selector.target_name in rmeta:
             field = rmeta[selector.target_name]
             curr_type = field.logical_type
-            if source_type != logical_type:
+            if src_type != logical_type:
                 raise Exception(f"Duplicate field '{selector.target_name}' being added")
-        new_field = Field(source_type)
+        new_field = Field(src_type)
         curr_record.register_field(selector.target_name, new_field)
 
     @case("fragment")
@@ -120,29 +120,29 @@ class Query(exprs.Function):
     @property
     def is_inline(self): return self._is_inline
 
-    def include(self, query : "Query", **kwargs : Dict[str, "Exp"]):
-        """ Includes one or all fields from the source type at the root level
+    def include(self, query : "Query", **kwargs : Dict[str, "Expr"]):
+        """ Includes one or all fields from the src type at the root level
         of this query
         """
         return self.add_command(Command.as_fragment(query, **kwargs))
 
-    def include_if(self, condition : "Exp", query : "Query", **kwargs : Dict[str, "Exp"]):
+    def include_if(self, condition : "Expr", query : "Query", **kwargs : Dict[str, "Expr"]):
         return self.add_command(Command.as_fragment(query, condition, **kwargs))
 
     def select(self, *selectors : List[Selector]):
-        """ Selects a particular source field as a field in the current root. """
+        """ Selects a particular src field as a field in the current root. """
         for selector in selectors:
             if type(selector) is str:
                 # we are doing a field copy
                 if self.num_inputs == 1:
                     inname = list(self.input_names)[0]
                     intype = self.input_type(inname)
-                    getter = exprs.Exp.as_getter(
-                            exprs.Exp.as_var(inname),
+                    getter = exprs.Expr.as_getter(
+                            exprs.Expr.as_var(inname),
                             selector)
                 else:
                     set_trace()
-                    # source_value = exprs.Exp.as_fpath(selector.target_name)
+                    # src_value = exprs.Expr.as_fpath(selector.target_name)
                 self.add_command(Command.as_selector(selector, getter))
             elif type(selector) is tuple:
                 assert len(selector) is 2
@@ -181,8 +181,8 @@ class Query(exprs.Function):
             self._eval_func_body([self])
         return self._func_body
 
-    def _eval_func_body(self, query_stack : List["Query"]) -> exprs.Exp:
-        self._func_body = exprs.Exp.as_new(self.return_type)
+    def _eval_func_body(self, query_stack : List["Query"]) -> exprs.Expr:
+        self._func_body = exprs.Expr.as_new(self.return_type)
         for index,command in enumerate(self._commands):
             result = AttrSetter(command, self._func_body, query_stack)
             self._func_body = result.value
@@ -192,14 +192,14 @@ class AttrSetter(CaseMatcher):
 
     @case("selector")
     def processSelector(self, selector : Selector,
-                        expr : exprs.Exp,
+                        expr : exprs.Expr,
                         query_stack : List["Query"]):
-        return exprs.Exp.as_setter(expr,
-                                   **{selector.target_name: selector.source_value})
+        return exprs.Expr.as_setter(expr,
+                                   **{selector.target_name: selector.src_value})
 
     @case("fragment")
     def processFragment(self, fragment : Fragment,
-                        expr : exprs.Exp,
+                        expr : exprs.Expr,
                         query_stack : List["Query"]):
         # Need let expression here!!!
         """
@@ -235,8 +235,8 @@ class AttrSetter(CaseMatcher):
             if fragment.query.has_input(arg):
                 argtype = fragment.query.input_type(arg)
                 let_mappings[arg] = argval
-                argvar = exprs.Exp.as_var(arg)
-                let_body_conds.append(exprs.Exp.as_istype(argvar, argtype))
+                argvar = exprs.Expr.as_var(arg)
+                let_body_conds.append(exprs.Expr.as_istype(argvar, argtype))
 
         setter_body = expr
         for index,command in enumerate(fragment.query._commands):
@@ -245,13 +245,13 @@ class AttrSetter(CaseMatcher):
         if len(let_body_conds) == 1:
             ifcond = let_body_conds[0]
         else:
-            ifcond = exprs.Exp.as_andexp(*let_body_conds)
-        let_body = exprs.Exp.as_ifelse(ifcond, setter_body, elsebody)
-        let = exprs.Exp.as_let(**let_mappings)
+            ifcond = exprs.Expr.as_andexp(*let_body_conds)
+        let_body = exprs.Expr.as_ifelse(ifcond, setter_body, elsebody)
+        let = exprs.Expr.as_let(**let_mappings)
         let.let.set_body(let_body)
 
         if not fragment.condition:
             return let
 
         # if we have a condition wrap the let in a conditional and return that
-        return exprs.Exp.as_ifelse(fragment.condition, let, elsebody)
+        return exprs.Expr.as_ifelse(fragment.condition, let, elsebody)

@@ -25,12 +25,16 @@ def funcprint(func, writer = None):
     pp = PrettyPrinter()
     writer = writer or Writer()
     pp.eprintFuncDecl(func, writer)
+    writer.dump()
     return writer
 
 def eprint(expr, writer = None):
     """ Pretty prints an expression. """
+    from modelzero.core.exprs import ensure_expr
+    expr = ensure_expr(expr)
     from modelzero.core.printers import Writer, PrettyPrinter
     pp = PrettyPrinter()
     writer = writer or Writer()
     pp(expr, writer)
+    writer.dump()
     return writer

@@ -74,12 +74,14 @@ class Field(object):
 
     def validate(self, value):
         if self.base_type and self.base_type.is_opaque_type and self.base_type.native_type:
-            if not isinstance(value, self.base_type.native_type):
+            # if value is None: set_trace()
+            if value is not None and not isinstance(value, self.base_type.native_type):
                 value = self.base_type.native_type(value)
         for validator in self.validators:
             value = validator(value)
         return value
 
+    """
     def makechecker(self, field_name):
         return property(lambda x: field_name in x.__field_values__)
 
@@ -89,6 +91,7 @@ class Field(object):
         def setter(instance, value):
             instance.__field_values__[field_name] = value
         return property(getter, setter)
+    """
 
     def wrap_optionality(self, thetype):
         if self.optional:
@@ -103,7 +106,8 @@ class Field(object):
         return self.wrap_optionality(self.base_type)
 
 class RecordMetadata(object):
-    def __init__(self):
+    def __init__(self, parent_record):
+        self._parent_record = parent_record
         self._fieldnames = []
         self._fields = {}
 
@@ -119,10 +123,14 @@ class RecordMetadata(object):
         return fieldname in self._fields
 
     def copy(self):
-        rm = RecordMetadata()
+        rm = RecordMetadata(self._parent_record)
         rm._fieldnames = self._fieldnames[:]
         rm._fields = self._fields.copy()
         return rm
+
+    def set_parent(self, parent_record):
+        self._parent_record = parent_record
+        return self
 
     def items(self):
         for k in self._fieldnames:
@@ -132,10 +140,13 @@ class RecordMetadata(object):
         if fieldname in self._fieldnames:
             raise Exception(f"Duplicate field '{fieldname}' found")
 
-        field.field_name = fieldname
+        curr_field = self._parent_record.__dict__.get(fieldname, None)
+        if curr_field:
+            assert curr_field == field
+        else:
+            setattr(self._parent_record, fieldname, field)
 
-        if fieldname in self._fieldnames:
-            raise Exception(f"Field already registered: {fieldname}")
+        field.field_name = fieldname
 
         # What do we do if the field is already present 
         # (ie via a base class or via a duplicate declaration)?
@@ -177,6 +188,7 @@ class RecordBase(object):
     def __getitem__(self, fieldname):
         if fieldname not in self.__record_metadata__:
             raise Exception(f"Invalid field name: {fieldname}")
+        set_trace()
         return getattr(self, fieldname)
 
     def get(self, fieldname, on_missing = None):
@@ -221,7 +233,7 @@ class RecordMeta(type):
         x.__fqn__ = dct.get("__fqn__", ".".join([x.__module__, name]))
 
         # Register all fields
-        __record_metadata__ = getattr(x, "__record_metadata__", RecordMetadata()).copy()
+        __record_metadata__ = getattr(x, "__record_metadata__", RecordMetadata(x)).copy().set_parent(x)
         setattr(x, "__record_metadata__", __record_metadata__)
         for fieldname,entry in x.__dict__.copy().items():
             if issubclass(entry.__class__, Field):

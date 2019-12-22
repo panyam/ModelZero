@@ -5,9 +5,15 @@ from modelzero.core import exprs, bp
 from taggedunion import Variant
 from taggedunion import Union as TUnion, CaseMatcher, case
 
+NativeNone = exprs.Native(None)
+def ensure_native(val):
+    if type(val) is not exprs.Native:
+        val = exprs.Native(val)
+    return val
+
 class DFSEval(CaseMatcher):
     """ Super class for expression evaluators. """
-    __caseon__ = exprs.Exp
+    __caseon__ = exprs.Expr
 
     @case("let")
     def valueOfLet(self, let: exprs.Let, env) -> exprs.Native:
@@ -19,17 +25,18 @@ class DFSEval(CaseMatcher):
     def execIsType(self, istype: exprs.IsType, env) -> exprs.Native:
         result: exprs.Native = self(istype.expr, env)
         target_type = istype.type_or_expr
-        if issubclass(target_type.__class__, exprs.Exp):
+        if issubclass(target_type.__class__, exprs.Expr):
             target_type = self(target_type, env)
-        return result.matches_type(target_type)
+        return ensure_native(result.matches_type(target_type))
 
     @case("var")
     def execVar(self, var: exprs.Var, env) -> exprs.Native:
-        return env.get(var.name)
+        value = env.get(var.name)
+        return ensure_native(value)
 
     @case("ref")
     def execRef(self, ref: exprs.Ref, env) -> exprs.Native:
-        # evaluate ref value if it is an Expr only
+        # evaluate ref value if it is an Exprr only
         # otherwise we could have a value or a variable (in which case it is a ref to a var)
         if not ref.is_var:
             return self.__caseon__.as_ref(self(ref.expr, env)).ref
@@ -48,28 +55,28 @@ class DFSEval(CaseMatcher):
         return self(ifelse.exp1 if result else ifelse.exp2, env)
 
     @case("andexp")
-    def execAndExp(self, andexp: exprs.And, env) -> exprs.Native:
+    def execAndExpr(self, andexp: exprs.And, env) -> exprs.Native:
         for expr in andexp.exprs:
             result = self(expr, env)
-            if not result.value: exprs.Native(False)
-        return exprs.Native(True)
+            if not result.value: ensure_native(False)
+        return ensure_native(True)
 
     @case("orexp")
-    def execOrExp(self, orexp: exprs.Or, env) -> exprs.Native:
+    def execOrExpr(self, orexp: exprs.Or, env) -> exprs.Native:
         for expr in orexp.exprs:
             result = self(expr, env)
-            if result.value: exprs.Native(True)
-        return exprs.Native(False)
+            if result.value: ensure_native(True)
+        return ensure_native(False)
 
     @case("notexp")
-    def execOrExp(self, notexp: exprs.Not, env) -> exprs.Native:
+    def execNotExpr(self, notexp: exprs.Not, env) -> exprs.Native:
         result = self(notexp.expr, env)
-        return exprs.Native(not result.value)
+        return ensure_native(not result.value)
 
     @case("new")
     def execNew(self, new: exprs.New, env) -> exprs.Native:
         result = new.obj_type.record_class()
-        return result
+        return ensure_native(result)
 
     @case("func")
     def execFunc(self, func: exprs.Func, env) -> exprs.Native:
@@ -77,24 +84,38 @@ class DFSEval(CaseMatcher):
 
     @case("fmap")
     def execFMap(self, fmap, env) -> exprs.Native:
+        assert len(fmap.func_expr.func.input_names) == 1
+        boundfunc = self(fmap.func_expr, env)
+        src : Native = self(fmap.src_expr, env)
+        elements : list = src.value
+        param = list(fmap.func_expr.func.input_names)[0]
+        results = [self.apply_proc(boundfunc, {param: item}) for item in elements]
         set_trace()
-        pass
+        return exprs.Expr.as_native(results)
 
     @case("getter")
     def execGetter(self, getter: exprs.Getter, env) -> exprs.Native:
-        source = self(getter.source_expr, env)
-        set_trace()
-        if source is None: return None
-        return getattr(source, getter.key)
+        src = self(getter.src_expr, env)
+        if src is None:
+            set_trace()
+            return NativeNone
+        if type(src) is not exprs.Native:
+            set_trace()
+        if src.value is None:
+            # set_trace()
+            return NativeNone
+        value = getattr(src.value, getter.key)
+        # if value is None: set_trace()
+        return ensure_native(value)
 
     @case("setter")
     def execSetter(self, setter: exprs.Setter, env) -> exprs.Native:
-        source = self(setter.source_expr, env)
-        if source is not None:
+        src = self(setter.src_expr, env)
+        if src is not None:
             for key,value in setter.keys_and_values.items():
-                value = self(value, env)
-                setattr(source, key, value)
-        return source
+                result = self(value, env)
+                setattr(src.value, key, result.value)
+        return src
 
     @case("call")
     def execCall(self, call: exprs.Call, env) -> exprs.Native:
@@ -102,7 +123,7 @@ class DFSEval(CaseMatcher):
         kwargs = {k: self(v, env) for k,v in call.kwargs.items()}
         return self.apply_proc(boundfunc, kwargs)
 
-    def apply_proc(self, boundfunc, kwargs: Dict[str, exprs.Native]) -> exprs.Native:
+    def apply_proc(self, boundfunc : exprs.Function.BoundFunc, kwargs: Dict[str, exprs.Native]) -> exprs.Native:
         curr_func, curr_env = boundfunc.func, boundfunc.env
 
         # No partial application for now
@@ -113,7 +134,7 @@ class DFSEval(CaseMatcher):
                 argval = kwargs[input]
             else:
                 if curr_func.has_default_value(input):
-                    argval = exprs.Native(curr_func.get_default_value(input))
+                    argval = ensure_native(curr_func.get_default_value(input))
                 else:
                     set_trace()
                     raise Exception(f"Value for arg '{input}' in function '{curr_func.fqn}' not found")
@@ -124,6 +145,6 @@ class DFSEval(CaseMatcher):
             # We have a native function so call it
             target_func = curr_func.body.value
             new_args = {k:native.value for k,native in new_args.items()}
-            return exprs.Native(target_func(**new_args))
+            return ensure_native(target_func(**new_args))
         newenv = curr_env.extend(**new_args)
         return self(curr_func.body, newenv)
