@@ -44,12 +44,15 @@ class NEJsonEncoder(json.JSONEncoder):
         else:
             from modelzero.core.entities import Key
             from modelzero.core.records import RecordBase
+            from modelzero.core.exprs import Native, Expr
             if type(obj) is Key:
                 if type(obj.parts) is list and len(obj.parts) == 1:
                     return obj.parts[0]
                 return obj.parts
             elif isinstance(obj, RecordBase):
                 return obj.__field_values__
+            elif type(obj) is Native:
+                return obj.value
         return super(NEJsonEncoder, self).default(obj)
 
 def nonempty(s):

@@ -158,7 +158,8 @@ class Method(object):
         argvals = [arg(target, *target_args, **target_kwargs) for arg in self.args]
         kwargvals = {k:v(target, *target_args, **target_kwargs) for (k,v) in self.kwargs.items()}
         try:
-            result = self._method(*argvals, **kwargvals)
+            func = self.function.body.value
+            result = func(*argvals, **kwargvals)
             if self.success_method:
                 result = self.success_method(result, target, *target_args, **target_kwargs)
         except Exception as e:

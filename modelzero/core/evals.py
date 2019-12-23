@@ -90,7 +90,6 @@ class DFSEval(CaseMatcher):
         elements : list = src.value
         param = list(fmap.func_expr.func.input_names)[0]
         results = [self.apply_proc(boundfunc, {param: item}) for item in elements]
-        set_trace()
         return exprs.Expr.as_native(results)
 
     @case("getter")
