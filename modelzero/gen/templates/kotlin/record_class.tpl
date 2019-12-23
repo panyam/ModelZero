@@ -1,16 +1,22 @@
 
-class {{record_class.__name__}} : AbstractEntity {
+class {{record_class.__name__}} 
+{%- if bases %} :
+    {%- for base in bases %} {%- if loop.index0 > 0 -%}, {%- endif -%} {{ base }} {% endfor %}
+{%- endif -%}
+{
 {%- for name, field in record_class.__record_metadata__.items() %}
     var {{camelCase(name)}} : {{ gen.kotlin_sig_for(field.logical_type) }} 
         get() {
         {% if field.optional -%}
-            var value = get("{{name}}", false)
-            if (value == null) return value
+            val v = get("{{name}}", false)
+            if (v == null) return null
         {% else -%}
-            var value = get("{{name}}")!!
+            val v = get("{{name}}")!!
         {% endif -%}
-            {% if gen.is_list_type(field.logical_type) %}
-            value = (value as List<Any>).stream()
+            {% if gen.is_list_type(field.base_type) %}
+            val value = (v as List<Any>).stream()
+            {% else %}
+            val value = v
             {% endif %}
             return {{ gen.any_to_typed(field.logical_type, "value") }}
         } 

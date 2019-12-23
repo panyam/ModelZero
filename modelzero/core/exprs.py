@@ -466,9 +466,20 @@ class TypeInfer(CaseMatcher):
     @case("getter")
     def typeOfGetter(self, getter: Getter, query_stack: List["Query"]):
         src_type = self(getter.src_expr, query_stack)
-        rec_class = src_type.record_type.record_class
-        field = rec_class.__record_metadata__[getter.key]
-        return field.logical_type
+        if src_type.is_record_type:
+            rec_class = src_type.record_type.record_class
+            if getter.key in rec_class.__record_metadata__:
+                field = rec_class.__record_metadata__[getter.key]
+                return field.logical_type
+            memb = [(k,v) for k,v in inspect.getmembers(rec_class) if k == getter.key]
+            if not memb:
+                raise Exception(f"Attribute '{getter.key}' not found in '{rec_class}'")
+            func = memb[0][1]
+            if type(func) is property:
+                sig = inspect.signature(func.fget)
+                return ensure_type(sig.return_annotation)
+        set_trace()
+        assert False
 
     @case("setter")
     def typeOfSetter(self, setter: Setter, query_stack: List["Query"]):

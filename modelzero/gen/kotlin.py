@@ -50,9 +50,13 @@ class Generator(gencore.GeneratorBase):
             raise Exception(f"Expecting Type instance, found: {logical_type}")
         return KotlinTypeSig(self)(logical_type)
 
-    def class_for_record_class(self, record_class):
+    def class_for_record_class(self, record_class, bases = None):
         # See if class_name is taken by another model
-        return self.load_template("kotlin/record_class").render(gen = self,
+        bases = bases or []
+        if type(bases) is str: bases = [bases]
+        return self.load_template("kotlin/record_class").render(
+                    gen = self,
+                    bases = bases,
                     record_class = record_class.record_type.record_class)
 
     def kotlinclient_for(self, router, class_name, url_prefix):
