@@ -20,7 +20,7 @@ class Field(object):
         self.optional = kwargs.get("optional", False)
         if base_type and base_type.is_type_app:
             from modelzero.core.custom_types import MZTypes
-            if base_type.origin_type.name == MZTypes.Optional.name:
+            if base_type.origin_type == MZTypes.Optional:
                 self.optional = True
                 base_type = base_type.type_args[0]
         self.base_type = base_type

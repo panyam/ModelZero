@@ -138,6 +138,14 @@ class PrettyPrinter(CaseMatcher):
             self(ifelse.exp2, writer)
         writer.writeln("}")
 
+    @case("block")
+    def eprintBlock(self, block: exprs.Block, writer) -> exprs.Native:
+        writer.writeln("{")
+        with writer.indent(end_with_nl = True):
+            for expr in block.exprs:
+                self(expr, writer)
+        writer.writeln("}")
+
     @case("notexp")
     def eprintNotExpr(self, notexp: exprs.Not, writer) -> exprs.Native:
         writer.write("(not ")

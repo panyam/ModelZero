@@ -3,6 +3,7 @@ from ipdb import set_trace
 import inspect
 from inspect import signature
 from modelzero.core import types,bp,records
+from modelzero.core.custom_types import MZTypes
 import typing, inspect
 from typing import List, Union, Dict, Tuple
 from taggedunion import Variant
@@ -31,6 +32,13 @@ class Ref(object):
 
     def __eq__(self, another):
         return self.expr == another.expr
+
+class Block(object):
+    def __init__(self, exprs):
+        self.exprs = exprs
+
+    def __eq__(self, another):
+        return self.exprs == another.exprs
 
 class TupleExpr(object):
     def __init__(self, *children):
@@ -369,6 +377,7 @@ class Expr(TUnion):
     let = Variant(Let)
     var = Variant(Var)
     ref = Variant(Ref)
+    block = Variant(Block)
     orexp = Variant(Or)
     andexp = Variant(And)
     notexp = Variant(Not)
@@ -424,7 +433,6 @@ class TypeInfer(CaseMatcher):
 
     @case("notexp")
     def typeOfNot(self, notexp, query_stack: List["Query"]):
-        from modelzero.core.custom_types import MZTypes
         return MZTypes.Bool
 
     @case("andexp")
@@ -441,6 +449,11 @@ class TypeInfer(CaseMatcher):
     def typeOfIsType(self, istype, query_stack: List["Query"]):
         from modelzero.core.custom_types import MZTypes
         return MZTypes.Bool
+
+    @case("block")
+    def typeOfBlock(self, block, query_stack: List["Query"]):
+        """ Return the type of the last expression in the block. """
+        return self(block.exprs[-1], query_stack)
 
     @case("ifelse")
     def typeOfIfElse(self, ifelse, query_stack: List["Query"]):
@@ -466,20 +479,31 @@ class TypeInfer(CaseMatcher):
     @case("getter")
     def typeOfGetter(self, getter: Getter, query_stack: List["Query"]):
         src_type = self(getter.src_expr, query_stack)
+        optional = False
+        return_type = None
+        if src_type.is_type_app:
+            if src_type.type_app.origin_type == MZTypes.Optional:
+                optional = True
+                src_type = src_type.type_app.type_args[0]
         if src_type.is_record_type:
             rec_class = src_type.record_type.record_class
             if getter.key in rec_class.__record_metadata__:
                 field = rec_class.__record_metadata__[getter.key]
-                return field.logical_type
-            memb = [(k,v) for k,v in inspect.getmembers(rec_class) if k == getter.key]
-            if not memb:
-                raise Exception(f"Attribute '{getter.key}' not found in '{rec_class}'")
-            func = memb[0][1]
-            if type(func) is property:
-                sig = inspect.signature(func.fget)
-                return ensure_type(sig.return_annotation)
-        set_trace()
-        assert False
+                return_type = field.logical_type
+            else:   # See if a property matches
+                memb = [(k,v) for k,v in inspect.getmembers(rec_class) if k == getter.key]
+                if not memb:
+                    raise Exception(f"Attribute '{getter.key}' not found in '{rec_class}'")
+                func = memb[0][1]
+                if type(func) is property:
+                    sig = inspect.signature(func.fget)
+                    return_type = ensure_type(sig.return_annotation)
+        if not return_type:
+            set_trace()
+            assert False
+        if optional and (not return_type.is_type_app or return_type.origin_type != MZTypes.Optional):
+            return_type = MZTypes.Optional[return_type]
+        return return_type
 
     @case("setter")
     def typeOfSetter(self, setter: Setter, query_stack: List["Query"]):

@@ -1,7 +1,7 @@
 
 from ipdb import set_trace
 from typing import List, Union, Dict, Tuple
-from modelzero.core import exprs, bp
+from modelzero.core import exprs, bp, records
 from taggedunion import Variant
 from taggedunion import Union as TUnion, CaseMatcher, case
 
@@ -44,6 +44,13 @@ class DFSEval(CaseMatcher):
             # Return the ref cell as is - upto caller to use 
             # this reference and the value in it as it sees fit
             return ref
+
+    @case("block")
+    def execBlock(self, block: exprs.Block, env) -> exprs.Native:
+        value = exprs.Native(0)
+        for expr in block.exprs:
+            value = self(expr, env)
+        return value
 
     @case("native")
     def execNative(self, native: exprs.Native, env) -> exprs.Native:
@@ -113,7 +120,13 @@ class DFSEval(CaseMatcher):
         if src is not None:
             for key,value in setter.keys_and_values.items():
                 result = self(value, env)
-                setattr(src.value, key, result.value)
+                if result.value is None:
+                    # TODO - Check if src.value is optional or not and send a default value otherwise
+                    delattr(src.value, key)
+                elif issubclass(result.value.__class__, records.Record) and not result.value.__field_values__:
+                    delattr(src.value, key)
+                else:
+                    setattr(src.value, key, result.value)
         return src
 
     @case("call")

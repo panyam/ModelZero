@@ -106,7 +106,7 @@ def get_param(source, param_name, validator=None, required=True, default=None, s
     """
     provided = param_name in source
     if required and default is None and not provided:
-        raise errors.ValidationError("Param '%s' required but not provided and default is None." % param_name)
+        raise errors.NotFound("Param '%s' required but not provided and default is None." % param_name)
 
     if not provided:
         value = default

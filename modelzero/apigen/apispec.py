@@ -7,6 +7,7 @@ from modelzero.core.resources import BaseResource
 from modelzero.utils import get_param 
 from modelzero.core import types
 from modelzero.core import exprs
+from modelzero.core import errors
 from modelzero.core.custom_types import *
 
 class API(object):
@@ -155,8 +156,17 @@ class Method(object):
         return self
 
     def run(self, target, *target_args, **target_kwargs):
-        argvals = [arg(target, *target_args, **target_kwargs) for arg in self.args]
-        kwargvals = {k:v(target, *target_args, **target_kwargs) for (k,v) in self.kwargs.items()}
+        def evalparamval(func, paramname = None):
+            try:
+                result = func(target, *target_args, **target_kwargs)
+                return result
+            except errors.NotFound as nf:
+                if self.function.has_default_value(paramname):
+                    return self.function.get_default_value(paramname)
+                raise nf
+
+        argvals = [evalparamval(arg) for arg in self.args]
+        kwargvals = {k:evalparamval(v, k) for (k,v) in self.kwargs.items()}
         try:
             func = self.function.body.value
             result = func(*argvals, **kwargvals)

@@ -7,14 +7,14 @@ class {{record_class.__name__}}
 {%- for name, field in record_class.__record_metadata__.items() %}
     var {{camelCase(name)}} : {{ gen.kotlin_sig_for(field.logical_type) }} 
         get() {
-        {% if field.optional -%}
-            val v = get("{{name}}", false)
-            if (v == null) return null
-        {% else -%}
-            val v = get("{{name}}")!!
-        {% endif -%}
+            {% if field.optional -%}
+                val v = get("{{name}}", false)
+                if (v == null) return null
+            {% else -%}
+                val v = get("{{name}}")!!
+            {% endif -%}
             {% if gen.is_list_type(field.base_type) %}
-            val value = (v as List<Any>).stream()
+            val value = if (v is JSONArray) v.stream() else (v as List<Any>).stream()
             {% else %}
             val value = v
             {% endif %}

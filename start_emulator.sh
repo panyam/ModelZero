@@ -17,4 +17,4 @@ fi
 
 export DATASTORE_EMULATOR_HOST=localhost:8081
 pyenv shell 2.7.16
-gcloud beta emulators datastore start --data-dir=./dsemu
+gcloud beta emulators datastore start --data-dir=./dsemu --log-http

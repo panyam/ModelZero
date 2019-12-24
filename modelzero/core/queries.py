@@ -159,6 +159,17 @@ class Query(exprs.Function):
     def inferred_return_type(self):
         if self._inferred_return_type is None:
             self._eval_return_type([])
+            # If our input types are all optional, our return type is also bound to be optional
+            if self._inferred_return_type.is_record_type:
+                optional = False
+                rmeta =  self._inferred_return_type.record_type.record_class.__record_metadata__
+                for field_type in [v.logical_type for v in rmeta._fields.values()]:
+                    # if any field is *not* optional, then our return type cannot be optional
+                    if False and not MZTypes.is_optional(field_type):
+                        optional = True
+                        break
+                if optional:
+                    set_trace()
         return self._inferred_return_type
 
     _counter = 1
@@ -186,6 +197,8 @@ class Query(exprs.Function):
         for index,command in enumerate(self._commands):
             result = AttrSetter(command, self._func_body, query_stack)
             self._func_body = result.value
+        # if at the end all we have is a new, then we have not set any fields
+        # so can really delete this
 
 class AttrSetter(CaseMatcher):
     __caseon__ = Command
@@ -194,6 +207,22 @@ class AttrSetter(CaseMatcher):
     def processSelector(self, selector : Selector,
                         expr : exprs.Expr,
                         query_stack : List["Query"]):
+        # how can we do optional setter chaining?
+
+        # eg if we have 
+        #   A.a = input.a
+        #   A.b = input.b
+        #   A.c = input.c
+        #   ...
+        #
+        # and we want to do these conditionally, so something like:
+        #
+        # if (input.a) set(A, "a", input.a) else A
+        # if (input.b) set(A, "b", input.b) else A
+        # if (input.c) set(A, "c", input.c) else A
+        # ...
+        #
+        # Problem here is that 
         return exprs.Expr.as_setter(expr,
                                    **{selector.target_name: selector.src_value})
 
