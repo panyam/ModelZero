@@ -1,8 +1,8 @@
 from ipdb import set_trace
-from ..core import errors
 from typing import TypeVar, Generic, List, Type
-from ..core.store import *
-from .entities import Key
+from modelzero.core import errors
+from modelzero.core.store import *
+from modelzero.core.entities import Key
 
 T = TypeVar("T")
 

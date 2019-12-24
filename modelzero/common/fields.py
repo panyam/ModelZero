@@ -1,7 +1,7 @@
 
 from ipdb import set_trace
 from modelzero.core import types
-from modelzero.core.custom_types import *
+from modelzero.core.types import MZTypes
 from modelzero.core.records import *
 from modelzero.core.entities import Entity
 from modelzero.utils import resolve_fqn

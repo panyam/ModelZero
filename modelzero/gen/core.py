@@ -4,10 +4,10 @@ from jinja2 import StrictUndefined
 from jinja2 import Template
 import datetime, typing, inspect
 import sys
-from modelzero.core import custom_fields as fields
 from modelzero.core import types
 from modelzero.core.records import Record, RecordBase
 from modelzero.core.entities import Entity
+from modelzero.common import fields
 from modelzero.utils import resolve_fqn, camelCase
 import modelzero.apigen.apispec
 from ipdb import set_trace

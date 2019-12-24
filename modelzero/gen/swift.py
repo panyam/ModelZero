@@ -2,9 +2,9 @@
 from jinja2 import Template
 import datetime, typing, inspect
 import sys
-from modelzero.core import custom_fields as fields
 from modelzero.core.models import ModelBase, PatchModelBase, PatchModel, PatchCommand, ListPatchCommand
 from modelzero.core.entities import Entity
+from modelzero.common import fields
 from modelzero.utils import resolve_fqn
 from modelzero.gen import core as gencore
 import modelzero.apigen.apispec

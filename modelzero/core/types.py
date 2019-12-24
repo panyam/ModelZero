@@ -1,20 +1,8 @@
 
 from ipdb import set_trace
-import typing
+import typing, datetime, inspect
 from typing import List, Dict, Tuple
 from taggedunion import Union, Variant
-
-def ensure_type(type_or_str):
-    if type(type_or_str) is str:
-        type_or_str = Type.as_type_ref(type_or_str)
-    elif type(type_or_str) is not Type:
-        from modelzero.core.records import Record
-        if issubclass(type_or_str, Record):
-            type_or_str = Type.as_record_type(type_or_str)
-        else:
-            set_trace()
-            raise Exception(f"Expected type or string, found: {type_or_str}")
-    return type_or_str
 
 class FuncType(object):
     def __init__(self, param_types : Dict[str, "Type"],
@@ -64,6 +52,20 @@ class DataType(object):
         for child in children:
             self._children.append(ensure_type(child))
         return self
+
+class OptionalType(DataType):
+    def __new__(cls, *args, **kwargs):
+        # Do not create duplicate EngineMethods wrappign each other
+        # flatmap it baby!
+        if len(args) > 0 and issubclass(args[0].__class__, OptionalType):
+            return args[0]
+        return super().__new__(cls)
+
+    def __init__(self, base_type : "Type"):
+        if issubclass(base_type.__class__, OptionalType):
+            # DO nothing because we are wrapping ourselves!
+            return 
+        self.base_type = ensure_type(base_type)
 
 class OpaqueType(object):
     def __init__(self, name : str, native_type = None):
@@ -178,6 +180,7 @@ class Type(Union):
     type_var = Variant(TypeVar)
     type_ref = Variant(TypeRef)
     func_type = Variant(FuncType)
+    optional_type = Variant(OptionalType)
 
     def __getitem__(self, *keys):
         return Type.as_type_app(self, *keys)
@@ -217,3 +220,54 @@ class Type(Union):
         elif self.is_sum_type:
             self.sum_type.child_if_exists_in_all_variants(name)
         return None
+
+class MZTypes:
+    Int = Type.as_opaque_type("int", int)
+    Long = Type.as_opaque_type("long", int)
+    String = Type.as_opaque_type("str", str)
+    Bytes = Type.as_opaque_type("bytes", bytes)
+    URL = Type.as_opaque_type("URL", str)
+    Bool = Type.as_opaque_type("bool", bool)
+    Float = Type.as_opaque_type("float", float)
+    Double = Type.as_opaque_type("double", float)
+    List = Type.as_opaque_type("list", list)
+    Map = Type.as_opaque_type("map", map)
+    Key = Type.as_opaque_type("key")
+    DateTime = Type.as_opaque_type("DateTime", datetime.datetime)
+
+def ensure_type(t):
+    if t in (None, inspect._empty):
+        return None
+    if t is str:
+        return MZTypes.String
+    if t is int:
+        return MZTypes.Int
+    if t is bool:
+        return MZTypes.Bool
+    if type(t) is typing._GenericAlias:
+        if t.__origin__ == list:
+            return MZTypes.List[ensure_type(t.__args__[0])]
+        if t.__origin__ == dict:
+            return MZTypes.Map[ensure_type(t.__args__[0]), ensure_type(t.__args__[1])]
+        if t.__origin__ == typing.Union:
+            if len(t.__args__) == 2 and type(None) in t.__args__:
+                optional_of = t.__args__[0] or t.__args__[1]
+                return Type.as_optional_type(optional_of)
+            children = [ensure_type(ta) for ta in t.__args__]
+            return Type.as_sum_type(None, *children)
+        set_trace()
+        a = 3
+    try:
+        type_or_str = t
+        if type(type_or_str) is str:
+            type_or_str = Type.as_type_ref(type_or_str)
+        elif type(type_or_str) is not Type:
+            from modelzero.core.records import Record
+            if issubclass(type_or_str, Record):
+                type_or_str = Type.as_record_type(type_or_str)
+            else:
+                set_trace()
+                raise Exception(f"Expected type or string, found: {type_or_str}")
+        return type_or_str
+    except Exception as exc:
+        raise exc

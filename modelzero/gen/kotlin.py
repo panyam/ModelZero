@@ -2,9 +2,9 @@
 from taggedunion import CaseMatcher, case
 import datetime, typing, inspect
 import sys
-from modelzero.core import custom_fields as fields
 from modelzero.core.entities import Entity
 from modelzero.core import types
+from modelzero.common import fields
 from modelzero.utils import resolve_fqn
 from modelzero.gen import core as gencore
 import modelzero.apigen.apispec
@@ -93,6 +93,23 @@ class KotlinTypeFor(CaseMatcher):
     def __init__(self, gen):
         self.gen = gen
 
+    @case("optional_type")
+    def kTypeForOptionalType(self, thetype : types.OptionalType):
+        base_type = self(thetype.base_type)
+        return types.Type.as_optional_type(base_type)
+
+    @case("type_app")
+    def kTypeForTypeApp(self, type_app : types.TypeApp):
+        gen = self.gen
+        origin_type = type_app.origin_type
+        new_origin_type = self(origin_type)
+        new_type_args = [self(a) for a in type_app.type_args]
+        result = new_origin_type.__getitem__(*new_type_args)
+        if result.origin_type.name == "Ref":
+            if result.type_args[0].is_type_app:
+                set_trace()
+        return result
+
     @case("opaque_type")
     def kTypeForOpaqueType(self, thetype : types.OpaqueType):
         t = None
@@ -136,9 +153,6 @@ class KotlinTypeFor(CaseMatcher):
         if thetype.name == "key":
             t,nc = gen.ensure_kotlin_type("Ref")
             if nc: t.opaque_type = types.OpaqueType("Ref")
-        if thetype.name == "Optional":
-            t,nc = gen.ensure_kotlin_type("Optional")
-            if nc: t.opaque_type = types.OpaqueType("Optional")
         if t is None:
             set_trace()
             raise Exception(f"Invalid opaque type encountered: {thetype.name}")
@@ -194,22 +208,15 @@ class KotlinTypeFor(CaseMatcher):
         else:
             return Type.as_record_type(types.RecordType(target))
 
-    @case("type_app")
-    def kTypeForTypeApp(self, type_app : types.TypeApp):
-        gen = self.gen
-        origin_type = type_app.origin_type
-        new_origin_type = self(origin_type)
-        new_type_args = [self(a) for a in type_app.type_args]
-        result = new_origin_type.__getitem__(*new_type_args)
-        if result.origin_type.name == "Ref":
-            if result.type_args[0].is_type_app:
-                set_trace()
-        return result
-
 class KotlinTypeSig(CaseMatcher):
     __caseon__ = types.Type
     def __init__(self, gen):
         self.gen = gen
+
+    @case("optional_type")
+    def sigForOptionalType(self, thetype : types.OptionalType):
+        optional_of = thetype.base_type
+        return f"{self(optional_of)}?"
 
     @case("opaque_type")
     def sigForOpaqueType(self, thetype : types.OpaqueType):
@@ -253,8 +260,7 @@ class KotlinTypeSig(CaseMatcher):
         else:
             opaque_type = origin_type.opaque_type
             if opaque_type.name == "Optional":
-                optional_of = type_app.type_args[0]
-                return f"{self(optional_of)}?"
+                assert False, "Use optiona_types directly instead of as type apps"
             child_type_sigs = map(self, type_app.type_args)
             return f"""{self(origin_type)}<{", ".join(child_type_sigs)}>"""
         raise Exception("Invalid type: {type_app}")
@@ -265,6 +271,10 @@ class DefaultValue(CaseMatcher):
 
     def defValFor(self, thetype : types.Type):
         return self(thetype)
+
+    @case("optional_type")
+    def defValForOptionalType(self, thetype : types.OptionalType):
+        return "null"
 
     @case("opaque_type")
     def defValForOpaqueType(self, thetype : types.OpaqueType):
@@ -368,6 +378,12 @@ class AnyToTyped(CaseMatcher):
     def callForTypeRef(self, thetype : types.TypeRef, varvalue):
         set_trace()
 
+    @case("optional_type")
+    def callForOptionalType(self, optional_type : types.OptionalType, varvalue):
+        gen = self.gen
+        optional_of = optional_type.base_type
+        return gen.any_to_typed(optional_of, varvalue)
+
     @case("type_app")
     def callForTypeApp(self, type_app : types.TypeApp, varvalue):
         # TODO - need to make this passable too
@@ -389,9 +405,6 @@ class AnyToTyped(CaseMatcher):
                 key_type = type_app.type_args[0]
                 val_type = type_app.type_args[1]
                 return f"Map<{gen.kotlin_sig_for(key_type)}, {gen.kotlin_sig_for(val_type)}>"
-            if opaque_type.name == "Optional":
-                optional_of = type_app.type_args[0]
-                return gen.any_to_typed(optional_of, varvalue)
             if opaque_type.name == "Ref":
                 reftype = type_app.type_args[0]
                 if reftype.is_record_type:

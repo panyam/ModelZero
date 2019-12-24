@@ -3,10 +3,11 @@ from ipdb import set_trace
 import logging
 from modelzero.core import errors, engine
 from modelzero.core.store import Query
+from modelzero.core.entities import KEY_FIELD
 from modelzero.common.validators import *
 from modelzero.common import engine
 from modelzero.common.engine import EngineMethod
-from modelzero.members.entities import Member, KEY_FIELD
+from modelzero.members.entities import Member
 
 class Engine(engine.Engine):
     RecordClass = Member

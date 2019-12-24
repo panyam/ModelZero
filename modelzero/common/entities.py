@@ -1,9 +1,8 @@
 
-from modelzero.core import types
-from modelzero.core.entities import *
-from modelzero.core.types import *
-from modelzero.core.custom_fields import *
 from datetime import datetime
+from modelzero.core.entities import Entity
+from modelzero.core.types import MZTypes
+from modelzero.common.fields import DateTimeField, Field
 
 class BaseEntity(Entity):
     is_active = Field(MZTypes.Bool, default=True, optional = True)

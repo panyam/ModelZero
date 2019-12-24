@@ -8,7 +8,6 @@ from modelzero.utils import get_param
 from modelzero.core import types
 from modelzero.core import exprs
 from modelzero.core import errors
-from modelzero.core.custom_types import *
 
 class API(object):
     def __init__(self, name, router, description = "", url_prefix = ""):
@@ -99,7 +98,7 @@ class Method(object):
                 if name not in param_types:
                     raise Exception(f"Parameter '{name}' not accepted by method '{self.fqn}'")
                 ptype = param_types[name]
-                if ptype is None or not isinstance(ptype, Type):
+                if ptype is None or not isinstance(ptype, types.Type):
                     raise Exception("Parameter '{name}' in '{self.fqn}' does not have a type annotation")
         return self._func_type
 

@@ -18,11 +18,9 @@ class Field(object):
         self._default = kwargs.get("default", None)
         self.validators = kwargs.get("validators", [])
         self.optional = kwargs.get("optional", False)
-        if base_type and base_type.is_type_app:
-            from modelzero.core.custom_types import MZTypes
-            if base_type.origin_type == MZTypes.Optional:
-                self.optional = True
-                base_type = base_type.type_args[0]
+        if base_type and base_type.is_optional_type:
+            self.optional = True
+            base_type = base_type.base_type
         self.base_type = base_type
 
     @property
@@ -95,8 +93,8 @@ class Field(object):
 
     def wrap_optionality(self, thetype):
         if self.optional:
-            from modelzero.core.custom_types import MZTypes
-            thetype = MZTypes.Optional[thetype]
+            from modelzero.core import types
+            thetype = types.Type.as_optional_type(thetype)
         return thetype
 
     @property

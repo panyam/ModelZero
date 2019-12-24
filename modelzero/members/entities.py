@@ -1,8 +1,8 @@
 
 import datetime
-from modelzero.core.entities import Entity, KEY_FIELD
-from modelzero.common.entities import *
-from modelzero.core.custom_fields import *
+from modelzero.core.types import MZTypes
+from modelzero.common.entities import BaseEntity
+from modelzero.common.fields import Field, DateTimeField
 
 class Member(BaseEntity):
     fullname = Field(MZTypes.String, required = True)

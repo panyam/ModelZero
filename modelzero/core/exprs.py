@@ -1,10 +1,9 @@
 
 from ipdb import set_trace
-import inspect
+import typing, inspect
 from inspect import signature
 from modelzero.core import types,bp,records
-from modelzero.core.custom_types import MZTypes
-import typing, inspect
+from modelzero.core.types import MZTypes, ensure_type
 from typing import List, Union, Dict, Tuple
 from taggedunion import Variant
 from taggedunion import Union as TUnion, CaseMatcher, case
@@ -437,17 +436,14 @@ class TypeInfer(CaseMatcher):
 
     @case("andexp")
     def typeOfAnd(self, andexp, query_stack: List["Query"]):
-        from modelzero.core.custom_types import MZTypes
         return MZTypes.Bool
 
     @case("orexp")
     def typeOfOr(self, orexp, query_stack: List["Query"]):
-        from modelzero.core.custom_types import MZTypes
         return MZTypes.Bool
 
     @case("istype")
     def typeOfIsType(self, istype, query_stack: List["Query"]):
-        from modelzero.core.custom_types import MZTypes
         return MZTypes.Bool
 
     @case("block")
@@ -481,10 +477,9 @@ class TypeInfer(CaseMatcher):
         src_type = self(getter.src_expr, query_stack)
         optional = False
         return_type = None
-        if src_type.is_type_app:
-            if src_type.type_app.origin_type == MZTypes.Optional:
-                optional = True
-                src_type = src_type.type_app.type_args[0]
+        if src_type.is_optional_type:
+            optional = True
+            src_type = src_type.base_type
         if src_type.is_record_type:
             rec_class = src_type.record_type.record_class
             if getter.key in rec_class.__record_metadata__:
@@ -501,8 +496,8 @@ class TypeInfer(CaseMatcher):
         if not return_type:
             set_trace()
             assert False
-        if optional and (not return_type.is_type_app or return_type.origin_type != MZTypes.Optional):
-            return_type = MZTypes.Optional[return_type]
+        if optional:
+            return_type = types.Type.as_optional_type(return_type)
         return return_type
 
     @case("setter")
@@ -521,34 +516,6 @@ class TypeInfer(CaseMatcher):
     @case("func")
     def typeOfFunc(self, func_expr, query_stack: List["Query"]):
         return func_expr.func_type.return_type
-
-def ensure_type(t):
-    if t in (None, inspect._empty):
-        return None
-    from modelzero.core.custom_types import MZTypes
-    if t is str:
-        return MZTypes.String
-    if t is int:
-        return MZTypes.Int
-    if t is bool:
-        return MZTypes.Bool
-    if type(t) is typing._GenericAlias:
-        if t.__origin__ == list:
-            return MZTypes.List[ensure_type(t.__args__[0])]
-        if t.__origin__ == dict:
-            return MZTypes.Map[ensure_type(t.__args__[0]), ensure_type(t.__args__[1])]
-        if t.__origin__ == typing.Union:
-            if len(t.__args__) == 2 and type(None) in t.__args__:
-                optional_of = t.__args__[0] or t.__args__[1]
-                return MZTypes.Optional[ensure_type(optional_of)]
-            children = [ensure_type(ta) for ta in t.__args__]
-            return types.Type.as_sum_type(None, *children)
-        set_trace()
-        a = 3
-    try:
-        return types.ensure_type(t)
-    except Exception as exc:
-        raise exc
 
 def ensure_expr(input):
     if input is None: return Expr(native = Native(None))
