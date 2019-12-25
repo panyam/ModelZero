@@ -45,13 +45,6 @@ class DFSEval(CaseMatcher):
             # this reference and the value in it as it sees fit
             return ref
 
-    @case("block")
-    def execBlock(self, block: exprs.Block, env) -> exprs.Native:
-        value = exprs.Native(0)
-        for expr in block.exprs:
-            value = self(expr, env)
-        return value
-
     @case("native")
     def execNative(self, native: exprs.Native, env) -> exprs.Native:
         return native
@@ -123,7 +116,7 @@ class DFSEval(CaseMatcher):
                 if result.value is None:
                     # TODO - Check if src.value is optional or not and send a default value otherwise
                     delattr(src.value, key)
-                elif issubclass(result.value.__class__, records.Record) and not result.value.__field_values__:
+                elif False and issubclass(result.value.__class__, records.Record) and not result.value.__field_values__:
                     delattr(src.value, key)
                 else:
                     setattr(src.value, key, result.value)

@@ -54,9 +54,23 @@ class CommandProcessor(CaseMatcher):
         if selector.target_name in rmeta:
             field = rmeta[selector.target_name]
             curr_type = field.logical_type
-            if src_type != logical_type:
+            if src_type != curr_type:
                 raise Exception(f"Duplicate field '{selector.target_name}' being added")
         new_field = Field(src_type)
+        """
+        # If all fields in the 
+        if self._inferred_return_type.is_record_type:
+            optional = False
+            rmeta =  self._inferred_return_type.record_type.record_class.__record_metadata__
+            for field_type in [v.logical_type for v in rmeta._fields.values()]:
+                # if any field is *not* optional, then our return type cannot be optional
+                if not field_type.is_optional_type:
+                    optional = True
+                    break
+            if optional:
+                self._inferred
+                set_trace()
+        """
         curr_record.register_field(selector.target_name, new_field)
 
     @case("fragment")
@@ -159,17 +173,6 @@ class Query(exprs.Function):
     def inferred_return_type(self):
         if self._inferred_return_type is None:
             self._eval_return_type([])
-            # If our input types are all optional, our return type is also bound to be optional
-            if self._inferred_return_type.is_record_type:
-                optional = False
-                rmeta =  self._inferred_return_type.record_type.record_class.__record_metadata__
-                for field_type in [v.logical_type for v in rmeta._fields.values()]:
-                    # if any field is *not* optional, then our return type cannot be optional
-                    if False and not MZTypes.is_optional(field_type):
-                        optional = True
-                        break
-                if optional:
-                    set_trace()
         return self._inferred_return_type
 
     _counter = 1

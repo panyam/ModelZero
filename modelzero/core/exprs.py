@@ -32,13 +32,6 @@ class Ref(object):
     def __eq__(self, another):
         return self.expr == another.expr
 
-class Block(object):
-    def __init__(self, exprs):
-        self.exprs = exprs
-
-    def __eq__(self, another):
-        return self.exprs == another.exprs
-
 class TupleExpr(object):
     def __init__(self, *children):
         self.children = list(children)
@@ -376,7 +369,6 @@ class Expr(TUnion):
     let = Variant(Let)
     var = Variant(Var)
     ref = Variant(Ref)
-    block = Variant(Block)
     orexp = Variant(Or)
     andexp = Variant(And)
     notexp = Variant(Not)
@@ -445,11 +437,6 @@ class TypeInfer(CaseMatcher):
     @case("istype")
     def typeOfIsType(self, istype, query_stack: List["Query"]):
         return MZTypes.Bool
-
-    @case("block")
-    def typeOfBlock(self, block, query_stack: List["Query"]):
-        """ Return the type of the last expression in the block. """
-        return self(block.exprs[-1], query_stack)
 
     @case("ifelse")
     def typeOfIfElse(self, ifelse, query_stack: List["Query"]):
