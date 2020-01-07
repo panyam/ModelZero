@@ -20,15 +20,3 @@ class Member(BaseEntity):
         days_remaining = (targetage * 365) - self.age
         return days_remaining
 
-    def to_json(self):
-        return {
-            'id': self.key,
-            'fullname': self.fullname,
-            'email': self.email,
-            'is_active': self.is_active,
-            'phone': self.phone,
-            'date_of_birth': self.date_of_birth,
-            'updated_at': self.updated_at,
-            'created_at': self.created_at
-        }
-

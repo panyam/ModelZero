@@ -10,7 +10,8 @@ def ListField(child_type, **kwargs):
     return Field(MZTypes.List[child_type], **kwargs)
 
 def MapField(key_type, value_type, **kwargs):
-    return Field(MZTypes.Map[key_type, value_type], **kwargs)
+    mt = MZTypes.Map[key_type, value_type]
+    return Field(mt, **kwargs)
 
 # from typing import TypeVar, Generic
 def KeyField(entity_class, **kwargs):

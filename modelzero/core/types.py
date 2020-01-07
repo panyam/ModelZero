@@ -13,6 +13,10 @@ class FuncType(object):
 class TypeApp(object): 
     def __init__(self, origin_type : "Type", *args : List["Type"]):
         self.origin_type = origin_type
+        if type(args) is tuple and len(args) == 1 and type(args[0]) is tuple:
+            # Happens when we have type_app of multiple params where a tuple is passed
+            # with a single element that is itself a tuple
+            args = args[0]
         self.type_args = [ensure_type(a) for a in args]
 
 class TypeRef(object):
