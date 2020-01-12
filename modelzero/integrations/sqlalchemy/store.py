@@ -4,11 +4,13 @@ from ipdb import set_trace
 from typing import TypeVar, Generic, List, Type
 from taggedunion import CaseMatcher, case
 from modelzero.core import errors, types
-from modelzero.core.store import *
+from modelzero.core.store import DataStore
+from modelzero.core.store import Table as MZTable, Clause, Query
 from modelzero.core.entities import Key
 
-from sqlalchemy import Column, ForeignKey, Integer, String, Boolean, DateTime, Float, Binary, MetaData
+from sqlalchemy import Column, ForeignKey, Integer, String, Boolean, DateTime, Float, Binary, MetaData, Table, ForeignKeyConstraint
 from sqlalchemy.orm import relationship
+from sqlalchemy.ext.declarative import declarative_base
 
 log = logging.getLogger(__name__)
 
@@ -17,50 +19,78 @@ T = TypeVar("T")
 class SQLStore(DataStore):
     def __init__(self, dbengine):
         self.dbengine = dbengine
+        self.Base = declarative_base()
         self.metadata = MetaData()
         self._tables = {}
+        from sqlalchemy.orm import sessionmaker
+        self.session = sessionmaker(bind = dbengine)
 
-    def get_table(self, entity_class: Type[T]) -> Table[T]:
+    def get_table(self, entity_class: Type[T]) -> MZTable[T]:
         if entity_class not in self._tables:
             self._tables[entity_class] = SQLTable(self, entity_class)
         return self._tables[entity_class]
 
-class SQLTable(Table[T]):
+class SQLTable(MZTable[T]):
     """ A SQL table over an entity. """
-    def __init__(self, dbengine, entity_class : Type[T] = T):
-        self.dbengine = dbengine
+    def __init__(self, sql_store : SQLStore, entity_class : Type[T] = T):
+        self.sql_store = sql_store
         self._entity_class = entity_class
         self._columns = []
         self._field_path_index = {}
         self._sa_table = None
+        self._sa_table_class = None
 
     @property
     def table_class(self):
-        if self._sa_table is None:
-            self.sa_table = Table(eclass.__fqn__, self.dbengine.metadata)
+        if self._sa_table_class is None:
+            self._columns = []
+            self._field_path_index = {}
+            self._sa_table = Table(self._entity_class.__fqn__, self.sql_store.metadata)
             field_path_index = self._field_path_index
-            for fieldname,field in self.entity_class.__record_metadata__.items():
-                field_to_column(field.logical_type, fieldname)
+
+            # First add the pkey fields
+            if not self._entity_class.key_fields():
+                column = Column(KEY_FIELD, String, primary_key = True)
+                self._field_path_index[column.name] = len(self._columns)
+                self._columns.append(column)
+                self._sa_table.append_column(column)
+
+            for fieldname,field in self._entity_class.__record_metadata__.items():
+                self.field_to_column(field.logical_type, fieldname)
+
+            # Add pkey constraint if they exist
+            for kf in self._entity_class.key_fields() or []:
+                column = self._columns[self._field_path_index[kf]]
+                column.primary_key = True
 
             # setup the field and table level constraints
+            self._sa_table_class = type(self._entity_class.__name__, (self.sql_store.Base,), dict(__table__ = self._sa_table))
             set_trace()
-        return self._sa_table
+        return self._sa_table_class
 
-    def field_to_column(field_type, field_name, parent_name = "", optional = False):
-        ourname = field_name if not parent_name else parent_name + "_" + field_name
-        column, children = FieldToColumns(field_path_index)(field_type, ourname, optional or field_type.is_optional_type)
+    def field_to_column(self, field_type, field_name, optional = False):
+        f2c = FieldToColumns()
+        columns, children = f2c(field_type, field_name, optional or field_type.is_optional_type)
 
         # Register the column
-        if column.name in self.field_path_index:
-            raise Exception(f"Column with name '{column.name}' already exists")
-        self.field_path_index[column.name] = len(self._columns)
-        self._columns.append(column)
-        self._sa_table.append_column(column)
+        if type(columns) is not list: columns = [columns]
+        for column in columns:
+            if column.name in self._field_path_index:
+                set_trace()
+                raise Exception(f"Column with name '{column.name}' already exists")
+            self._field_path_index[column.name] = len(self._columns)
+            self._columns.append(column)
+            self._sa_table.append_column(column)
+
+        # Add any constraints
+        for fkc in f2c.fkey_constraints:
+            self._sa_table.append_constraint(fkc)
 
         # Proceed to the children
         child_optional = optional or field_type.is_optional_type or field_type.is_sum_type or field_type.is_union_type
         for childname,childtype in children:
-            field_to_column(childtype, childname, ourname, child_optional)
+            ourname = field_name + "_" + childname
+            self.field_to_column(childtype, ourname, child_optional)
 
     def fromDatastore(self, entity) -> T:
         if entity is None:
@@ -133,6 +163,7 @@ class SQLTable(Table[T]):
 
     def fetch(self, query : Query[T]) -> List[T]:
         """ Queries the table for entries that match a certain conditions and then sorting (if required) and returns results in a particular window. """
+        self.table_class
         dsquery = self.dsclient.query(kind = self._entity_class.__fqn__)
         efields = self._entity_class.__record_metadata__
         for f in query.filters:
@@ -148,8 +179,8 @@ class SQLTable(Table[T]):
 
 class FieldToColumns(CaseMatcher):
     __caseon__ = types.Type
-    def __init__(self, field_path_index):
-        self.field_path_index = field_path_index
+    def __init__(self):
+        self.fkey_constraints = []
 
     @case("record_type")
     def for_record_type(self, type_data : types.RecordType, field_name : str, optional : bool = False):
@@ -188,6 +219,8 @@ class FieldToColumns(CaseMatcher):
             return Column(field_name, DateTime, nullable = optional), []
         if type_data == types.MZTypes.Bytes.opaque_type:
             return Column(field_name, Binary, nullable = optional), []
+        if type_data == types.MZTypes.URL.opaque_type:
+            return Column(field_name, String, nullable = optional), []
         set_trace()
         pass
 
@@ -200,15 +233,34 @@ class FieldToColumns(CaseMatcher):
 
         opaque_type = origin_type.opaque_type
         if origin_type == types.MZTypes.List:
-            return Column(field_name, Binary), []
+            return Column(field_name, Binary, nullable = optional), []
         elif origin_type == types.MZTypes.Map:
             set_trace()
             a = 2
         elif origin_type == types.MZTypes.Key:
             # Nothing to be done - should be taken care by 
             # above
-            set_trace()
-            a = 3
+            typearg = type_app.type_args[0]
+            record_class = typearg.record_class
+            # The target record could have a default pkey, custom pkey or even a composite pkey!
+            source_fields = []
+            target_fields = []
+            if not record_class.key_fields():
+                # default pkey
+                source_fields = [ field_name ]
+                target_fields = [f"{record_class.__fqn__}.__key__"]
+                columns = [Column(field_name, String, nullable = optional)]
+            else:
+                # possibly composite key 
+                # get *all* fields from the target_fields.  A complication here is even if there is a single key field,
+                # key fields are allowed to be composite objects - like 
+                set_trace()
+                for kf in record_class.key_fields():
+                    set_trace()
+                    a = 3
+                columns = []
+            self.fkey_constraints.append(ForeignKeyConstraint(source_fields, target_fields))
+            return columns, []
         else:
             set_trace()
             raise Exception("Invalid generic container")
