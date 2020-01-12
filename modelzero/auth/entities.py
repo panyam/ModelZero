@@ -25,7 +25,7 @@ class Channel(Entity):
     verified_at = DateTimeField()
 
     # Credentials for this entity (eg salted passwords etc)
-    credentials = JsonField()
+    credentials = Field(MZTypes.String)
 
     # The session token that can be used to verify an api/user request on this channel
     session_token = Field(MZTypes.Bytes)

@@ -100,6 +100,7 @@ class Field(object):
     @property
     def logical_type(self):
         if not self.base_type:
+            set_trace()
             raise Exception("basetype not found")
         return self.wrap_optionality(self.base_type)
 

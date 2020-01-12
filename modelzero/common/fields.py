@@ -32,6 +32,3 @@ class DateTimeField(Field):
         else:
             value = value.replace(tzinfo = None)
         return super().validate(value)
-
-def JsonField(**kwargs):
-    return Field(None, **kwargs)

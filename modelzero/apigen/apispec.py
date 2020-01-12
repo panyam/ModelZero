@@ -235,8 +235,18 @@ class QueryParam(object):
     def __call__(self, req, *args, **kwargs):
         return get_param(req.params, self.param)
 
-def RequestMember(self, *a, **kw):
-    return self.request_member
+def RequestMember(req, *a, **kw):
+    return req.request_member
 
-def Body(self, *a, **kw):
-    return self.params
+def Body(req, *a, **kw):
+    return req.params
+
+class RecordFromBody(object):
+    def __init__(self, record_class):
+        self.record_class = record_class
+
+    def __call__(self, req, *args, **kwargs):
+        d = dict(req.params.items())
+        record = self.record_class()
+        record.apply_patch(req.params)
+        return record

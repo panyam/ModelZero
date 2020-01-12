@@ -10,7 +10,6 @@ if [ "$numlines" = "0" ]; then
 fi
 
 PORT=8081
-RESET="false"
 
 while getopts ":hrp:" opt; do
   case ${opt} in
@@ -20,6 +19,10 @@ while getopts ":hrp:" opt; do
       echo "    $0 -r       Reset the datastore by removing all data."
       echo "    $0 -p       Port the emulator should be started on.  Default: 8081"
       exit 0
+      ;;
+    r)
+        kill -9 `ps -ef | grep datastore-emulator | grep -v grep | sed -e "s/  */:/g" | cut -d ':' -f 2 `
+        rm -Rf ./dsemu
       ;;
     p ) # process option t
       PORT=$OPTARG
@@ -32,11 +35,6 @@ while getopts ":hrp:" opt; do
 done
 
 shift $((OPTIND -1))
-
-if [ "$RESET" = "true" ]; then
-    kill -9 `ps -ef | grep datastore-emulator | grep -v grep | sed -e "s/  */:/g" | cut -d ':' -f 2 `
-    rm -Rf ./dsemu
-fi
 
 HOST_PORT="localhost:$PORT"
 pyenv shell 2.7.16
