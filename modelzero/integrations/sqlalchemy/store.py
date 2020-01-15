@@ -6,9 +6,9 @@ from taggedunion import CaseMatcher, case
 from modelzero.core import errors, types
 from modelzero.core.store import DataStore
 from modelzero.core.store import Table as MZTable, Clause, Query
-from modelzero.core.entities import Key
+from modelzero.core.entities import Key, KEY_FIELD
 
-from sqlalchemy import Column, ForeignKey, Integer, String, Boolean, DateTime, Float, Binary, MetaData, Table, ForeignKeyConstraint
+from sqlalchemy import Column, ForeignKey, Integer, String, Boolean, DateTime, Float, Binary, MetaData, Table, ForeignKeyConstraint, PrimaryKeyConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -19,8 +19,7 @@ T = TypeVar("T")
 class SQLStore(DataStore):
     def __init__(self, dbengine):
         self.dbengine = dbengine
-        self.Base = declarative_base()
-        self.metadata = MetaData()
+        self.metadata = MetaData(self.dbengine)
         self._tables = {}
         from sqlalchemy.orm import sessionmaker
         self.session = sessionmaker(bind = dbengine)
@@ -35,17 +34,23 @@ class SQLTable(MZTable[T]):
     def __init__(self, sql_store : SQLStore, entity_class : Type[T] = T):
         self.sql_store = sql_store
         self._entity_class = entity_class
+        self._table_name = self._entity_class.__fqn__ # .replace(".", "_")
         self._columns = []
         self._field_path_index = {}
         self._sa_table = None
         self._sa_table_class = None
+        self.create_table()
 
     @property
-    def table_class(self):
-        if self._sa_table_class is None:
+    def table_name(self):
+        return self._table_name
+
+    def create_table(self):
+        """ Create the core SQL Alchemy Table object. """
+        if self._sa_table is None:
             self._columns = []
             self._field_path_index = {}
-            self._sa_table = Table(self._entity_class.__fqn__, self.sql_store.metadata)
+            self._sa_table = Table(self._table_name, self.sql_store.metadata)
             field_path_index = self._field_path_index
 
             # First add the pkey fields
@@ -59,17 +64,32 @@ class SQLTable(MZTable[T]):
                 self.field_to_column(field.logical_type, fieldname)
 
             # Add pkey constraint if they exist
-            for kf in self._entity_class.key_fields() or []:
-                column = self._columns[self._field_path_index[kf]]
+            kfs = self._entity_class.key_fields() or []
+            if len(kfs) == 1:
+                column = self._columns[self._field_path_index[kfs[0]]]
                 column.primary_key = True
+            elif len(kfs) > 1:
+                # Add a PrimaryKeyConstraint
+                self._sa_table.append_constraint(PrimaryKeyConstraint(*kfs))
+        return self._sa_table
 
-            # setup the field and table level constraints
-            self._sa_table_class = type(self._entity_class.__name__, (self.sql_store.Base,), dict(__table__ = self._sa_table))
-            set_trace()
+    @property
+    def sa_table(self):
+        self.create_table()
+        # Also create it if it doesnt exist
+        engine = self.sql_store.dbengine
+        if not engine.dialect.has_table(engine, self.table_name):
+            self.sql_store.metadata.create_all()
+        return self._sa_table
+
+    @property
+    def sa_table_class(self):
+        if self._sa_table_class is None:
+            self._sa_table_class = type(self._entity_class.__name__, (self.sql_store.Base,), dict(__table__ = self.sa_table))
         return self._sa_table_class
 
     def field_to_column(self, field_type, field_name, optional = False):
-        f2c = FieldToColumns()
+        f2c = FieldToColumns(self)
         columns, children = f2c(field_type, field_name, optional or field_type.is_optional_type)
 
         # Register the column
@@ -152,34 +172,39 @@ class SQLTable(MZTable[T]):
         self.dsclient.delete(dskey)
 
     OPS = {
-        Clause.OP_EQ: "=",
-        Clause.OP_NE: "!=",
-        Clause.OP_LT: "<",
-        Clause.OP_LE: "<=",
-        Clause.OP_GT: ">",
-        Clause.OP_GE: ">=",
-        Clause.OP_IN: "in",
+            Clause.OP_EQ: lambda f,v: f == v,
+        Clause.OP_NE: lambda f,v: f != v,
+        Clause.OP_LT: lambda f,v: f < v,
+        Clause.OP_LE: lambda f,v: f <= v,
+        Clause.OP_GT: lambda f,v: f > v,
+        Clause.OP_GE: lambda f,v: f >= v,
+        Clause.OP_IN: lambda f,v: f in v,
     }
 
     def fetch(self, query : Query[T]) -> List[T]:
         """ Queries the table for entries that match a certain conditions and then sorting (if required) and returns results in a particular window. """
-        self.table_class
-        dsquery = self.dsclient.query(kind = self._entity_class.__fqn__)
+        from sqlalchemy import select, and_, or_, not_, asc, desc, all_
+        table = self.sa_table
+        cols = table.c
+        stmt = select([table])
         efields = self._entity_class.__record_metadata__
-        for f in query.filters:
-            assert f.fieldname in efields, "Clause refers to field (%s) not in entity class (%s)" % (f.fieldname, self._entity_class)
-            dsquery.add_filter(f.fieldname,
-                               SQLTable.OPS[f.operator],
-                               f.value)
+        if query.filters:
+            # assert f.fieldname in efields, "Clause refers to field (%s) not in entity class (%s)" % (f.fieldname, self._entity_class)
+            and_args = [OPS[f.operator](getattr(cols, f.fieldname), f.value) for f in query.filters]
+            stmt = stmt.where(and_(*and_args))
         if query.field_ordering:
-            dsquery.order = [field if asc else "-"+ field for field,asc in query.field_ordering]
-        results = dsquery.fetch(limit = query.limit, offset = query.offset)
+            order_args = [(asc if is_asc else desc)(getattr(cols, field))  for field,is_asc in query.field_ordering]
+            stmt = stmt.order_by(*order_args)
+        if query.limit: stmt = stmt.limit(query.limit)
+        if query.offset: stmt = stmt.offset(query.offset)
+        results = self.sql_store.dbengine.execute(stmt)
         entities = list(map(self.fromDatastore, results))
         return entities
 
 class FieldToColumns(CaseMatcher):
     __caseon__ = types.Type
-    def __init__(self):
+    def __init__(self, sql_table):
+        self.sql_table = sql_table
         self.fkey_constraints = []
 
     @case("record_type")
@@ -241,6 +266,8 @@ class FieldToColumns(CaseMatcher):
             # Nothing to be done - should be taken care by 
             # above
             typearg = type_app.type_args[0]
+            if typearg.is_type_ref:
+                typearg = typearg.target
             record_class = typearg.record_class
             # The target record could have a default pkey, custom pkey or even a composite pkey!
             source_fields = []
@@ -249,6 +276,8 @@ class FieldToColumns(CaseMatcher):
                 # default pkey
                 source_fields = [ field_name ]
                 target_fields = [f"{record_class.__fqn__}.__key__"]
+                # Ensure table exists
+                target_table = self.sql_table.sql_store.get_table(record_class)
                 columns = [Column(field_name, String, nullable = optional)]
             else:
                 # possibly composite key 

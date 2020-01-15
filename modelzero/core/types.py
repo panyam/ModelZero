@@ -29,6 +29,8 @@ class TypeRef(object):
         if self._target is None:
             from modelzero.utils import resolve_fqn
             resolved, self._target = resolve_fqn(self.target_fqn)
+            if resolved:
+                self._target = ensure_type(self._target)
             assert resolved
         return self._target
 
