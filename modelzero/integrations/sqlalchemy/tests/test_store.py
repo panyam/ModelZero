@@ -14,10 +14,11 @@ from modelzero.integrations.sqlalchemy import store
 def dbengine():
     # TODO - read arguments to see db name, type etc
     engine = create_engine(f"sqlite:///./test.db")
-    if not database_exists(engine.url):
-        create_database(engine.url)
-    yield engine
-    drop_database(engine.url)
+    # Recreate the DB
+    if database_exists(engine.url):
+        drop_database(engine.url)
+    create_database(engine.url)
+    return engine
 
 class SimpleRecord(BaseEntity):
     name = Field(MZTypes.String)
@@ -48,3 +49,6 @@ def test_put_table(mocker, dbengine):
     entity = SimpleRecord(is_active = True, created_at = datetime.utcnow(), updated_at = datetime.utcnow(), __key__ = "123",
             name = "Hello", age = 1000, smart = True)
     entity = table.put(entity)
+
+    entity2 = table.get_by_key("123")
+    assert entity == entity2

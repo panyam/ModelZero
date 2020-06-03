@@ -29,13 +29,65 @@ class SQLStore(DataStore):
             self._tables[entity_class] = SQLTable(self, entity_class)
         return self._tables[entity_class]
 
+class ColumnInfo(object):
+    def __init__(self, name, sa_column, index, end_index = -1, parent_column = None):
+        self.name = name
+        self.parent_column = None
+        self.sa_column = sa_column
+        self.index = index
+        self.end_index = end_index if end_index >= 0 else index
+
+class Flattener(object):
+    """ Currently a way to flatten schemas is to simply recursively visit all
+    entries in a type and manually write a column store.  This means we would
+    need to have custom serializer and deserializer methods.  Instead
+    if we can represent the SQL target as a "type" then this transformation
+    is very similar to how Queries can transform one type to another.  Another 
+    problem with manually flattening is the parent is responsible for child types
+    and will end up duplicating it.  eg 
+
+    if two different entity types contain say a Member record, then the parent
+    entity will have to flatten/unflatten this each time instead of one 
+    flat/unflattener responsible for doing this regardless of the context 
+    it is in.
+
+    The way we would use this is:
+
+    table = get_table(entity_class)
+    table._sql_transformer = would be an instance of this
+    table.ensure() - will make sure DB is created with all needed columns
+    table._sa_columns would have *all* the columns which are obtained by
+    getting the columns of all flatteners it contains
+    table.put(entity), will just go through all flatteners (managing offsets) 
+    to create a flatenned set
+    table.get() will convert a result set by unflattening it to nested records
+
+    Here we are decoupling offset management from flat/unflat
+    """
+    def __init__(self, sql_store, column_list, entity_type):
+        self.entity_type = entity_type
+
+    @property
+    def num_columns(self):
+        """ Returns how many columns are required to representt this type. """
+        return 1
+
+    def from_result_set(self, result_set, offset):
+        """ Given a result set and an offset into it, extracts the entity
+        of the given type and un-flattens it. """
+        return None
+
+    def to_result_set(self, offset, value):
+        """ Flattens a value of our entity_type into the result set. """
+        return None
+
 class SQLTable(MZTable[T]):
     """ A SQL table over an entity. """
     def __init__(self, sql_store : SQLStore, entity_class : Type[T] = T):
         self.sql_store = sql_store
         self._entity_class = entity_class
         self._table_name = self._entity_class.__fqn__ # .replace(".", "_")
-        self._columns = []
+        self._all_columns = []
         self._field_path_index = {}
         self._sa_table = None
         self._sa_table_class = None
@@ -55,8 +107,12 @@ class SQLTable(MZTable[T]):
 
             # First add the pkey fields
             if not self._entity_class.key_fields():
-                column = Column(KEY_FIELD, String, primary_key = True)
-                self._field_path_index[column.name] = len(self._columns)
+                colindex = len(self._columns)
+                colname = KEY_FIELD
+                self._field_path_index[colname] = colindex
+
+                sa_column = Column(KEY_FIELD, String, primary_key = True)
+                column = ColumnInfo(column.name, sa_column, colindex, -1, None)
                 self._columns.append(column)
                 self._sa_table.append_column(column)
 
@@ -67,7 +123,7 @@ class SQLTable(MZTable[T]):
             kfs = self._entity_class.key_fields() or []
             if len(kfs) == 1:
                 column = self._columns[self._field_path_index[kfs[0]]]
-                column.primary_key = True
+                column.sa_column.primary_key = True
             elif len(kfs) > 1:
                 # Add a PrimaryKeyConstraint
                 self._sa_table.append_constraint(PrimaryKeyConstraint(*kfs))
@@ -94,11 +150,21 @@ class SQLTable(MZTable[T]):
 
         # Register the column
         if type(columns) is not list: columns = [columns]
-        for column in columns:
+        for sa_column in columns:
+            colindex = len(self._columns)
+            colname = sa_column.name
+
             if column.name in self._field_path_index:
                 set_trace()
                 raise Exception(f"Column with name '{column.name}' already exists")
-            self._field_path_index[column.name] = len(self._columns)
+
+                sa_column = Column(KEY_FIELD, String, primary_key = True)
+                column = ColumnInfo(column.name, sa_column, colindex, -1, None)
+                self._columns.append(column)
+                self._sa_table.append_column(column)
+
+
+            self._field_path_index[column.name] = colindex
             self._columns.append(column)
             self._sa_table.append_column(column)
 
@@ -119,6 +185,7 @@ class SQLTable(MZTable[T]):
         if isinstance(entity, builtin_list):
             entity = entity.pop()
         out = self._entity_class()
+        set_trace()
         for k,v in entity.items():
             setattr(out, k, v)
         # set the key
@@ -126,42 +193,68 @@ class SQLTable(MZTable[T]):
         out.setkey(key)
         return out
 
-    def toDatastore(self, entity : T):
-        dsc = self.dsclient
-        if entity.getkey():
-            # Create one - this means our entity needs auto generated keys
-            key = dsc.key(self._entity_class.__fqn__, entity.getkey().value)
+    def entity_to_table_fields(self, parent, fieldname, key_fields, entity_fields, prefix = ""):
+        fullpath = fieldname if not prefix else (prefix + "_" + fieldname)
+        value = parent.__field_values__[fieldname]
+        valuetype = parent.__record_metadata__[fieldname].logical_type
+        if valuetype.is_record_type:
+            entity_fields[fullpath] = value is not None
+            if value:
+                # need to recurse
+                for field,fvalue in value.__field_values__.items():
+                    self.entity_to_table_fields(value, field, key_fields, entity_fields, fullpath)
+        elif valuetype.is_union_type:
+            set_trace()
+            entity_fields[fullpath] = value is not None
         else:
-            key = dsc.key(self._entity_class.__fqn__)
-        dsentity = datastore.Entity(key=key)
-        for field,value in entity.__field_values__.items():
-            if type(value) is Key:
-                dsentity[field] = value.value
+            # leaf/native values
+            entity_fields[fullpath] = parent.__field_values__[fieldname]
+
+    def toDatastore(self, entity : T):
+        key_fields = {}
+        entity_fields = {}
+
+        if not self._entity_class.key_fields():
+            if entity.getkey():
+                # Create one - this means our entity needs auto generated keys
+                key_fields[KEY_FIELD] = entity.getkey().value
             else:
-                dsentity[field] = value
-        return dsentity
+                set_trace()
+        for field,value in entity.__field_values__.items():
+            self.entity_to_table_fields(entity, field, key_fields, entity_fields)
+        return key_fields, entity_fields
 
     # GET methods
     def get_by_key(self, key : Key, nothrow = True) -> T:
+        from sqlalchemy import select, and_, or_, not_, asc, desc, all_
+        stmt = select([self.sa_table])
         if type(key) is not Key:
             key = self._entity_class.Key(key)
-        dskey = self.dsclient.key(self._entity_class.__fqn__, key.value)
-        value = self.dsclient.get(dskey)
-        if not value:
-            if not nothrow:
-                raise errors.NotFound("Object not found for Key: " + str(key))
-            return None
-        # convert it to entity
-        return self.fromDatastore(value)
+        key_fields = self._entity_class.key_fields()
+        if not key_fields:
+            stmt = stmt.where(getattr(self.sa_table.c, KEY_FIELD) == key.value)
+        else:
+            for i,kf in enumerate(key_fields):
+                stmt = stmt.where(getattr(self.sa_table.c, kf) == key.parts[i])
+
+        results = self.sql_store.dbengine.execute(stmt)
+        entity = list(map(self.fromDatastore, results))
+        return entity
 
     # Update methods
     def put(self, entity : T, validate = True) -> T:
         """ Updates this entity by first validating it and then persisting it. """
         if validate:
             entity.validate()
-        dsentity = self.toDatastore(entity)
-        self.dsclient.put(dsentity)
-        return self.fromDatastore(dsentity)
+        from sqlalchemy import insert
+        table = self.sa_table
+        cols = table.c
+        stmt = table.insert()
+        key_fields, entity_fields = self.toDatastore(entity)
+        all_fields = dict(entity_fields, **key_fields)
+        stmt = stmt.values(**all_fields)
+        result = self.sql_store.dbengine.execute(stmt)
+        return entity
 
     # Delete methods
     def delete_by_key(self, key : Key):
